@@ -51,6 +51,7 @@ export function recordFailure(ip: string): void {
   const rec = attempts.get(ip)
   const now = Date.now()
   if (!rec || now > rec.until) {
+    attempts.delete(ip) // 清理旧记录
     attempts.set(ip, { count: 1, until: now + WINDOW_MS })
   } else {
     rec.count++

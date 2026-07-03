@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { signToken, verifyToken, isLocked, recordFailure, clearFailures } from '@/lib/auth'
+/** @author sgz @since 2026-07-03 */
+import { expect, test, vi, beforeEach } from 'vitest'
+import { signToken, verifyToken, isLocked, recordFailure, clearFailures, checkCredentials } from '@/lib/auth'
 
 const SECRET = 'test-secret'
 
@@ -32,4 +33,40 @@ test('lockout after 5 failures, cleared on success', () => {
   expect(isLocked(ip)).toBe(true)
   clearFailures(ip)
   expect(isLocked(ip)).toBe(false)
+})
+
+beforeEach(() => {
+  vi.resetModules()
+})
+
+test('checkCredentials with correct credentials', async () => {
+  vi.stubEnv('ADMIN_USER', 'admin')
+  vi.stubEnv('ADMIN_PASSWORD', 'password')
+  const { checkCredentials: check } = await import('@/lib/auth')
+  expect(check('admin', 'password')).toBe(true)
+  vi.unstubAllEnvs()
+})
+
+test('checkCredentials with wrong username', async () => {
+  vi.stubEnv('ADMIN_USER', 'admin')
+  vi.stubEnv('ADMIN_PASSWORD', 'password')
+  const { checkCredentials: check } = await import('@/lib/auth')
+  expect(check('wrong', 'password')).toBe(false)
+  vi.unstubAllEnvs()
+})
+
+test('checkCredentials with wrong password', async () => {
+  vi.stubEnv('ADMIN_USER', 'admin')
+  vi.stubEnv('ADMIN_PASSWORD', 'password')
+  const { checkCredentials: check } = await import('@/lib/auth')
+  expect(check('admin', 'wrong')).toBe(false)
+  vi.unstubAllEnvs()
+})
+
+test('checkCredentials with empty credentials', async () => {
+  vi.stubEnv('ADMIN_USER', '')
+  vi.stubEnv('ADMIN_PASSWORD', '')
+  const { checkCredentials: check } = await import('@/lib/auth')
+  expect(check('', '')).toBe(false)
+  vi.unstubAllEnvs()
 })
