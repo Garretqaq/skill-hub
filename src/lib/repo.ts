@@ -26,7 +26,6 @@ export function ensureRepo(): void {
   if (MARKETPLACE_REPO_URL) {
     execFileSync('git', ['clone', MARKETPLACE_REPO_URL, REPO_DIR], { stdio: 'inherit' })
   } else {
-    fs.mkdirSync(path.join(REPO_DIR, '.claude-plugin'), { recursive: true })
     git(REPO_DIR, ['init', '-q'])
   }
   const manifest = path.join(REPO_DIR, '.claude-plugin', 'marketplace.json')

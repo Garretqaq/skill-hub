@@ -1,3 +1,4 @@
+/** @author sgz @since 2026-07-03 */
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
