@@ -1,3 +1,4 @@
+/** @author sgz @since 2026-07-03 */
 import { expect, test } from 'vitest'
 import path from 'node:path'
 import { readMarketplace, listPlugins, getPluginDetail } from '@/lib/marketplace'
