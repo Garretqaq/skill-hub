@@ -9,3 +9,14 @@ export const MARKETPLACE_REPO_URL = process.env.MARKETPLACE_REPO_URL || ''
 export const ADMIN_USER = process.env.ADMIN_USER || ''
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 export const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-insecure-secret'
+
+export function stripCreds(url: string): string {
+  try {
+    const u = new URL(url)
+    u.username = ''
+    u.password = ''
+    return u.toString()
+  } catch {
+    return url
+  }
+}

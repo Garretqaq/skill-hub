@@ -65,3 +65,13 @@ export function isLocked(ip: string): boolean {
 export function clearFailures(ip: string): void {
   attempts.delete(ip)
 }
+
+export async function getUser(): Promise<{ username: string } | null> {
+  const { cookies } = await import('next/headers')
+  const { AUTH_SECRET } = await import('./config')
+  const token = (await cookies()).get('auth')?.value
+  if (!token) return null
+  const payload = verifyToken(token, AUTH_SECRET)
+  if (!payload) return null
+  return { username: payload.user }
+}
