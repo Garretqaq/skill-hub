@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   const overwrite = form.get('overwrite') === 'true'
   const version = form.get('version')
   const description = form.get('description')
+  const displayName = form.get('displayName')
   if (!(file instanceof File)) return NextResponse.json({ error: 'file required' }, { status: 400 })
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-upload-'))
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
       overwrite,
       version: version ? String(version).trim() : undefined,
       description: description ? String(description) : undefined,
+      displayName: displayName ? String(displayName).trim() : undefined,
     })
     commitAll(`${overwrite ? 'update' : 'add'} ${res.name}`)
     try {
