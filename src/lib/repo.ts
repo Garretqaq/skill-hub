@@ -67,3 +67,18 @@ export function setRemoteUrl(url: string): void {
   if (!fs.existsSync(path.join(REPO_DIR, '.git'))) return
   setRemoteUrlIn(REPO_DIR, url)
 }
+
+// 远程为准，强制拉取覆盖本地。远程空或历史不相干均安全处理。
+export function syncFromRemoteIn(dir: string, url: string): void {
+  setRemoteUrlIn(dir, url)                                  // 确保 origin 指向目标
+  const heads = git(dir, ['ls-remote', '--heads', 'origin']).trim()
+  if (!heads) return                                        // 远程无分支/提交，跳过
+  git(dir, ['fetch', 'origin'])
+  git(dir, ['reset', '--hard', 'FETCH_HEAD'])               // fetch origin 后 FETCH_HEAD 指向远程默认分支
+}
+export function syncFromRemote(): void {
+  ensureRepo()                                              // .git 缺失时 clone（clone 即已同步）
+  const url = getRepoUrl()
+  if (!url) return                                          // 无远程（本地 init），跳过
+  syncFromRemoteIn(REPO_DIR, url)
+}

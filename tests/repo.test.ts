@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
-import { commitAllIn, resetHardIn, headOf, resetToIn } from '@/lib/repo'
+import { commitAllIn, resetHardIn, headOf, resetToIn, syncFromRemoteIn } from '@/lib/repo'
 
 function gitRepo(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shrepo-'))
@@ -51,4 +51,42 @@ test('commitAllIn is a no-op when nothing changed', () => {
   commitAllIn(dir, 'second') // no changes
   const count = execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: dir }).toString().trim()
   expect(count).toBe('1')
+})
+
+// 造一个带一次提交的 bare 远程，返回其路径
+function bareRemoteWithCommit(): string {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'shwork-'))
+  execFileSync('git', ['init', '-q'], { cwd: work })
+  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: work })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: work })
+  fs.writeFileSync(path.join(work, 'remote-skill.txt'), 'from-remote')
+  execFileSync('git', ['add', '-A'], { cwd: work })
+  execFileSync('git', ['commit', '-q', '-m', 'remote init'], { cwd: work })
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'shbare-')) + '.git'
+  execFileSync('git', ['clone', '-q', '--bare', work, bare])
+  return bare
+}
+
+test('syncFromRemoteIn force-overwrites local from unrelated remote', () => {
+  const remote = bareRemoteWithCommit()
+  const local = gitRepo()
+  fs.writeFileSync(path.join(local, 'local-only.txt'), 'local')
+  commitAllIn(local, 'local init')
+
+  syncFromRemoteIn(local, remote)
+
+  expect(fs.readFileSync(path.join(local, 'remote-skill.txt'), 'utf8')).toBe('from-remote')
+  expect(fs.existsSync(path.join(local, 'local-only.txt'))).toBe(false) // 本地被远程覆盖
+})
+
+test('syncFromRemoteIn is a safe no-op against an empty remote', () => {
+  const emptyBare = fs.mkdtempSync(path.join(os.tmpdir(), 'shbareempty-')) + '.git'
+  execFileSync('git', ['init', '-q', '--bare', emptyBare])
+  const local = gitRepo()
+  fs.writeFileSync(path.join(local, 'keep.txt'), 'keep')
+  commitAllIn(local, 'local init')
+
+  syncFromRemoteIn(local, emptyBare) // 不抛错
+
+  expect(fs.readFileSync(path.join(local, 'keep.txt'), 'utf8')).toBe('keep') // 本地保留
 })
