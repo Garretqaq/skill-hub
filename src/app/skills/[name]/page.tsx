@@ -59,9 +59,16 @@ export default async function SkillDetailPage({ params }: PageProps) {
           {/* Header */}
           <div className="mb-12 space-y-6">
             <div className="space-y-4">
-              <h1 className="text-4xl md:text-5xl font-bold text-zinc-100 leading-tight">
-                {detail.entry.name}
-              </h1>
+              <div className="flex items-center gap-4 flex-wrap">
+                <h1 className="text-4xl md:text-5xl font-bold text-zinc-100 leading-tight">
+                  {detail.entry.name}
+                </h1>
+                {detail.entry.version && (
+                  <span className="px-3 py-1 text-sm font-mono font-medium bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/30 rounded-lg">
+                    v{detail.entry.version}
+                  </span>
+                )}
+              </div>
 
               {detail.entry.description && (
                 <p className="text-xl text-zinc-400 leading-relaxed">
