@@ -7,6 +7,7 @@ import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
 import { ensureRepo, commitAll, push, headOf, resetTo } from '@/lib/repo'
 import { ingest, discoverPackages, toKebab } from '@/lib/ingest'
+import { normalizeSource } from '@/lib/remote'
 import { packageRoot, cloneInto } from '@/lib/watched'
 
 export async function POST(req: NextRequest) {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-ref-'))
     try {
       // 克隆远程仓库到临时目录
-      cloneInto(String(sourceUrl), tmp)
+      cloneInto(normalizeSource(String(sourceUrl)), tmp)
 
       // 发现包根（引用型包的远程仓库应该是实际的 plugin/skill 仓库）
       const packages = discoverPackages(tmp)
