@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
   const file = form.get('file')
   const nameOverride = form.get('name')
   const overwrite = form.get('overwrite') === 'true'
+  const version = form.get('version')
   if (!(file instanceof File)) return NextResponse.json({ error: 'file required' }, { status: 400 })
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-upload-'))
@@ -24,8 +25,11 @@ export async function POST(req: NextRequest) {
     new AdmZip(buf).extractAllTo(tmp, true)
     ensureRepo()
     const before = headOf() // ensureRepo 保证有基础提交，push 失败时回滚到此
-    const res = ingest(REPO_DIR, tmp,
-      { name: nameOverride ? String(nameOverride) : undefined, overwrite })
+    const res = ingest(REPO_DIR, tmp, {
+      name: nameOverride ? String(nameOverride) : undefined,
+      overwrite,
+      version: version ? String(version).trim() : undefined,
+    })
     commitAll(`${overwrite ? 'update' : 'add'} ${res.name}`)
     try {
       push()
