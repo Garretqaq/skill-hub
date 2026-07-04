@@ -68,7 +68,7 @@ export function setRemoteUrl(url: string): void {
   setRemoteUrlIn(REPO_DIR, url)
 }
 
-// 远程为准，强制拉取覆盖本地。远程空或历史不相干均安全处理。
+// 远程为准拉取覆盖本地；但本地有未推送提交时保留本地。远程空或历史不相干均安全处理。
 export function syncFromRemoteIn(dir: string, url: string): void {
   setRemoteUrlIn(dir, url)                                     // 确保 origin 指向目标
   const heads = git(dir, ['ls-remote', '--heads', 'origin']).trim()
