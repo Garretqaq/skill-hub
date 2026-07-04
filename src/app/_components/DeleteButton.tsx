@@ -6,6 +6,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/lib/useToast'
+import Toast from './Toast'
 
 interface DeleteButtonProps {
   name: string
@@ -15,6 +17,7 @@ export default function DeleteButton({ name }: DeleteButtonProps) {
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const router = useRouter()
+  const { toasts, hideToast, error } = useToast()
 
   const handleDelete = async () => {
     if (!confirming) {
@@ -27,13 +30,13 @@ export default function DeleteButton({ name }: DeleteButtonProps) {
       const res = await fetch(`/api/skills/${name}`, { method: 'DELETE' })
       if (!res.ok) {
         const text = await res.text()
-        alert(`删除失败: ${text}`)
+        error(`删除失败: ${text}`)
         return
       }
       router.push('/')
       router.refresh()
     } catch (err) {
-      alert(`删除失败: ${err}`)
+      error(`删除失败: ${err}`)
     } finally {
       setDeleting(false)
       setConfirming(false)
@@ -73,6 +76,11 @@ export default function DeleteButton({ name }: DeleteButtonProps) {
           </button>
         )}
       </div>
+
+      {/* Toast 通知 */}
+      {toasts.map(toast => (
+        <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => hideToast(toast.id)} />
+      ))}
     </div>
   )
 }

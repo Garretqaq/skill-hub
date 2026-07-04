@@ -10,6 +10,8 @@ import { useRouter } from 'next/navigation'
 import type { PluginEntry } from '@/lib/marketplace'
 import UploadForm from './UploadForm'
 import SettingsForm from './SettingsForm'
+import { useToast } from '@/lib/useToast'
+import Toast from './Toast'
 
 interface AdminConsoleProps {
   plugins: PluginEntry[]
@@ -19,6 +21,7 @@ export default function AdminConsole({ plugins }: AdminConsoleProps) {
   const [showUpload, setShowUpload] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const router = useRouter()
+  const { toasts, hideToast, error } = useToast()
 
   return (
     <div className="space-y-8">
@@ -71,18 +74,23 @@ export default function AdminConsole({ plugins }: AdminConsoleProps) {
       ) : (
         <div className="divide-y divide-zinc-800 border border-zinc-800 rounded-2xl overflow-hidden bg-zinc-900/40 backdrop-blur-sm">
           {plugins.map((plugin) => (
-            <AdminRow key={plugin.name} plugin={plugin} onChanged={() => router.refresh()} />
+            <AdminRow key={plugin.name} plugin={plugin} onChanged={() => router.refresh()} onError={error} />
           ))}
         </div>
       )}
 
       {showUpload && <UploadForm onClose={() => setShowUpload(false)} />}
       {showSettings && <SettingsForm onClose={() => setShowSettings(false)} />}
+
+      {/* Toast 通知 */}
+      {toasts.map(toast => (
+        <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => hideToast(toast.id)} />
+      ))}
     </div>
   )
 }
 
-function AdminRow({ plugin, onChanged }: { plugin: PluginEntry; onChanged: () => void }) {
+function AdminRow({ plugin, onChanged, onError }: { plugin: PluginEntry; onChanged: () => void; onError: (msg: string) => void }) {
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -95,12 +103,12 @@ function AdminRow({ plugin, onChanged }: { plugin: PluginEntry; onChanged: () =>
     try {
       const res = await fetch(`/api/skills/${plugin.name}`, { method: 'DELETE' })
       if (!res.ok) {
-        alert(`删除失败: ${await res.text()}`)
+        onError(`删除失败: ${await res.text()}`)
         return
       }
       onChanged()
     } catch (err) {
-      alert(`删除失败: ${err}`)
+      onError(`删除失败: ${err}`)
     } finally {
       setDeleting(false)
       setConfirming(false)

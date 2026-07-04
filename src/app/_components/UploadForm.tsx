@@ -6,6 +6,8 @@
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/lib/useToast'
+import Toast from './Toast'
 
 interface UploadFormProps {
   onClose: () => void
@@ -21,6 +23,7 @@ export default function UploadForm({ onClose }: UploadFormProps) {
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
+  const { toasts, hideToast, success, error } = useToast()
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -77,14 +80,15 @@ export default function UploadForm({ onClose }: UploadFormProps) {
 
       if (!res.ok) {
         const text = await res.text()
-        alert(`上传失败: ${text}`)
+        error(`上传失败: ${text}`)
         return
       }
 
+      success('上传成功')
       router.refresh()
       onClose()
     } catch (err) {
-      alert(`上传失败: ${err}`)
+      error(`上传失败: ${err}`)
     } finally {
       setUploading(false)
     }
@@ -259,6 +263,11 @@ export default function UploadForm({ onClose }: UploadFormProps) {
           </form>
         </div>
       </div>
+
+      {/* Toast 通知 */}
+      {toasts.map(toast => (
+        <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => hideToast(toast.id)} />
+      ))}
     </div>
   )
 }

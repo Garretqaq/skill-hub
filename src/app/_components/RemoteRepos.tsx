@@ -7,6 +7,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import type { WatchedRepo, IndexedPackage } from '@/lib/watched'
+import { useToast } from '@/lib/useToast'
+import Toast from './Toast'
 
 export default function RemoteRepos() {
   const [repos, setRepos] = useState<WatchedRepo[]>([])
@@ -14,6 +16,7 @@ export default function RemoteRepos() {
   const [source, setSource] = useState('')
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState<string | null>(null) // 当前进行中的动作标识
+  const { toasts, hideToast, success, error } = useToast()
 
   // 拉取监听列表 + 搜索结果
   const load = useCallback(async (query: string) => {
@@ -35,7 +38,8 @@ export default function RemoteRepos() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source: source.trim() }),
       })
-      if (!res.ok) { alert(`添加失败: ${await res.text()}`); return }
+      if (!res.ok) { error(`添加失败: ${await res.text()}`); return }
+      success('已添加监听')
       setSource('')
       await load(q)
     } finally { setBusy(null) }
@@ -70,8 +74,8 @@ export default function RemoteRepos() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: pkg.repoId, name: pkg.name, sourceUrl: pkg.sourceUrl /* 引用型包会有 sourceUrl，本地包为 undefined（API 会忽略） */ }),
       })
-      if (!res.ok) { alert(`导入失败: ${await res.text()}`); return }
-      alert(`已导入 ${pkg.name} 到本市场`)
+      if (!res.ok) { error(`导入失败: ${await res.text()}`); return }
+      success(`已导入 ${pkg.name} 到本市场`)
     } finally { setBusy(null) }
   }
 
@@ -190,6 +194,11 @@ export default function RemoteRepos() {
           )}
         </div>
       </div>
+
+      {/* Toast 通知 */}
+      {toasts.map(toast => (
+        <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => hideToast(toast.id)} />
+      ))}
     </div>
   )
 }

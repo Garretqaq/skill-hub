@@ -6,6 +6,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/lib/useToast'
+import Toast from './Toast'
 
 interface SettingsFormProps {
   onClose: () => void
@@ -20,6 +22,7 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const { toasts, hideToast, success, error } = useToast()
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -27,13 +30,13 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
       const res = await fetch('/api/settings/refresh', { method: 'POST' })
       const d = await res.json()
       if (!res.ok) {
-        alert(`刷新失败: ${d.detail || d.error}`)
+        error(`刷新失败: ${d.detail || d.error}`)
         return
       }
-      alert(`刷新成功，当前 ${d.count} 个技能`)
+      success(`刷新成功，当前 ${d.count} 个技能`)
       router.refresh()
     } catch (err) {
-      alert(`刷新失败: ${err}`)
+      error(`刷新失败: ${err}`)
     } finally {
       setRefreshing(false)
     }
@@ -61,12 +64,13 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
         body: JSON.stringify({ repoUrl: repoUrl.trim(), token: token.trim(), name: name.trim() }),
       })
       if (!res.ok) {
-        alert(`保存失败: ${await res.text()}`)
+        error(`保存失败: ${await res.text()}`)
         return
       }
+      success('保存成功')
       onClose()
     } catch (err) {
-      alert(`保存失败: ${err}`)
+      error(`保存失败: ${err}`)
     } finally {
       setSaving(false)
     }
@@ -177,6 +181,11 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
           </form>
         </div>
       </div>
+
+      {/* Toast 通知 */}
+      {toasts.map(toast => (
+        <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => hideToast(toast.id)} />
+      ))}
     </div>
   )
 }
