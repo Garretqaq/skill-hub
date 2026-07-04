@@ -75,6 +75,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
 
   const dest = path.join(repoDir, 'plugins', name)
   const existed = fs.existsSync(dest)
+  if (existed && !opts?.overwrite) throw new Error(`name exists: ${name}`)
 
   // 覆盖时读现有插件版本，用于自增与防降级
   let currentVersion = ''
@@ -100,7 +101,6 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
   }
 
   if (existed) {
-    if (!opts?.overwrite) throw new Error(`name exists: ${name}`)
     fs.rmSync(dest, { recursive: true, force: true }) // 覆盖：先删旧目录，manifest 条目由下方替换
   }
 

@@ -75,6 +75,20 @@ test('overwrite replaces existing plugin instead of throwing', () => {
   expect(readMarketplace(repo).plugins.filter(p => p.name === 'dup')).toHaveLength(1) // 不重复
 })
 
+test('non-overwrite request to existing name throws name-exists even with a non-increasing version', () => {
+  const repo = seedRepo()
+  const mk = (body: string) => {
+    const src = tmp()
+    const sk = path.join(src, 'dup2')
+    fs.mkdirSync(sk, { recursive: true })
+    fs.writeFileSync(path.join(sk, 'SKILL.md'), `---\nname: dup2\ndescription: d\n---\n${body}`)
+    return src
+  }
+  ingest(repo, mk('v1')) // creates dup2 @ 1.0.0
+  expect(() => ingest(repo, mk('v2'), { version: '1.0.0' })) // no overwrite flag, version <= current
+    .toThrow(/name exists/)
+})
+
 test('unrecognized package throws', () => {
   const repo = seedRepo()
   const src = tmp()
