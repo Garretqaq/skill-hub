@@ -4,12 +4,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { discoverPackages } from './ingest'
 import { normalizeSource } from './remote'
+import { listPlugins } from './marketplace'
+import { isValidVersion, compareVersions } from './semver'
 
 export interface WatchedRepo { id: string; source: string; url: string; addedAt: string }
 export interface IndexedPackage {
   repoId: string; source: string; url: string; market: string | null
   name: string; kind: 'plugin' | 'skill'; description: string
   sourceUrl?: string  // 引用型包的外部 git URL（本地包为 undefined）
+  version?: string    // 源包声明的版本，缺失为 undefined
 }
 
 const storeFile = () => path.resolve('data/watched.json')
@@ -103,7 +106,8 @@ export function buildIndex(): IndexedPackage[] {
         name: pkg.name,
         kind: pkg.kind,
         description: pkg.description,
-        sourceUrl: pkg.sourceUrl  // 新增
+        sourceUrl: pkg.sourceUrl,  // 新增
+        version: pkg.version
       })
     }
   }
@@ -122,4 +126,42 @@ export function packageRoot(id: string, name: string): string | null {
   const dir = cacheDir(id)
   if (!fs.existsSync(dir)) return null
   return discoverPackages(dir).find(p => p.name === name)?.root ?? null
+}
+
+export interface UpdateItem {
+  name: string
+  kind: 'plugin' | 'skill'
+  localVersion: string
+  remoteVersion: string
+  repoId: string
+  source: string
+  sourceUrl?: string
+}
+
+// 已导入包 vs 监听库聚合索引，按 name 比对 version，仅返回远程版本更高者
+export function updateStatus(): UpdateItem[] {
+  const repoDir = path.resolve(process.env.MARKETPLACE_DIR || 'data/marketplace')
+  const local = listPlugins(repoDir)
+
+  // 远程按 name 取 version 最高者（同名多库时）
+  const remote = new Map<string, IndexedPackage>()
+  for (const p of buildIndex()) {
+    if (!p.version || !isValidVersion(p.version)) continue
+    const cur = remote.get(p.name)
+    if (!cur || compareVersions(p.version, cur.version!) > 0) remote.set(p.name, p)
+  }
+
+  const out: UpdateItem[] = []
+  for (const lp of local) {
+    if (!lp.version || !isValidVersion(lp.version)) continue
+    const r = remote.get(lp.name)
+    if (!r) continue
+    if (compareVersions(r.version!, lp.version) > 0) {
+      out.push({
+        name: lp.name, kind: r.kind, localVersion: lp.version,
+        remoteVersion: r.version!, repoId: r.repoId, source: r.source, sourceUrl: r.sourceUrl,
+      })
+    }
+  }
+  return out
 }

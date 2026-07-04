@@ -195,3 +195,48 @@ test('packageRoot 对引用型包返回 null', async () => {
   expect(packageRoot(id, 'alpha')).toBeTruthy() // 本地包
   expect(packageRoot(id, 'ref-only')).toBeNull() // 引用型包
 })
+
+test('updateStatus：远程版本更高才算有更新，更新后闭环', async () => {
+  const { cloneInto, refreshWatched, updateStatus } = await import('@/lib/watched')
+  const { ingest } = await import('@/lib/ingest')
+  const remote = remoteRepo('alpha')            // 远程 alpha v1.0.0
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+
+  // 本地导入到 data/marketplace（v1.0.0）
+  const repoDir = path.join(work, 'data/marketplace')
+  const cacheRoot = path.join(work, 'data/watched', id, 'plugins', 'alpha')
+  ingest(repoDir, cacheRoot)
+  expect(updateStatus()).toHaveLength(0)        // 版本相同，无更新
+
+  // 远程升到 1.1.0 并刷新缓存
+  fs.writeFileSync(path.join(remote, 'plugins/alpha/.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'alpha', description: 'alpha desc', version: '1.1.0' }))
+  execFileSync('git', ['commit', '-qam', 'bump'], { cwd: remote })
+  refreshWatched(id)
+
+  const ups = updateStatus()
+  expect(ups).toHaveLength(1)
+  expect(ups[0]).toMatchObject({ name: 'alpha', localVersion: '1.0.0', remoteVersion: '1.1.0', repoId: id })
+
+  // 模拟点击更新：以 remoteVersion 覆盖导入 → 闭环
+  ingest(repoDir, cacheRoot, { overwrite: true, version: '1.1.0' })
+  expect(updateStatus()).toHaveLength(0)
+})
+
+test('updateStatus：远程包无 version 不误报', async () => {
+  const { cloneInto, updateStatus } = await import('@/lib/watched')
+  const { ingest } = await import('@/lib/ingest')
+  const remote = remoteRepo('alpha')
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+  ingest(path.join(work, 'data/marketplace'), path.join(work, 'data/watched', id, 'plugins', 'alpha'))
+  // 抹掉缓存里 alpha 的 version
+  fs.writeFileSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'alpha', description: 'alpha desc' }))
+  expect(updateStatus()).toHaveLength(0)
+})
