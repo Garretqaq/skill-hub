@@ -68,7 +68,7 @@ export default function RemoteRepos() {
     try {
       const res = await fetch('/api/watched/import', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: pkg.repoId, name: pkg.name }),
+        body: JSON.stringify({ id: pkg.repoId, name: pkg.name, sourceUrl: pkg.sourceUrl /* 引用型包会有 sourceUrl，本地包为 undefined（API 会忽略） */ }),
       })
       if (!res.ok) { alert(`导入失败: ${await res.text()}`); return }
       alert(`已导入 ${pkg.name} 到本市场`)
@@ -168,8 +168,8 @@ export default function RemoteRepos() {
                     <span className="text-xs text-zinc-500 truncate">{pkg.source}</span>
                     <button
                       onClick={() => doImport(pkg)}
-                      disabled={isReference || busy === `import:${pkg.repoId}:${pkg.name}`}
-                      title={isReference ? '引用型包无法直接导入，请使用外部安装命令' : ''}
+                      disabled={busy === `import:${pkg.repoId}:${pkg.name}`}
+                      title={isReference ? '将自动从远程克隆导入' : ''}
                       className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {busy === `import:${pkg.repoId}:${pkg.name}` ? '导入中' : '导入本市场'}
