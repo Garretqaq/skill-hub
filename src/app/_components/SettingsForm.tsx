@@ -5,18 +5,39 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface SettingsFormProps {
   onClose: () => void
 }
 
 export default function SettingsForm({ onClose }: SettingsFormProps) {
+  const router = useRouter()
   const [repoUrl, setRepoUrl] = useState('')
   const [token, setToken] = useState('')
   const [name, setName] = useState('')
   const [hasToken, setHasToken] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      const res = await fetch('/api/settings/refresh', { method: 'POST' })
+      const d = await res.json()
+      if (!res.ok) {
+        alert(`刷新失败: ${d.detail || d.error}`)
+        return
+      }
+      alert(`刷新成功，当前 ${d.count} 个技能`)
+      router.refresh()
+    } catch (err) {
+      alert(`刷新失败: ${err}`)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   useEffect(() => {
     fetch('/api/settings')
@@ -143,6 +164,14 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
                 className="px-6 py-3 bg-zinc-800 text-zinc-300 rounded-lg font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 取消
+              </button>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={loading || saving || refreshing}
+                className="px-6 py-3 bg-zinc-800 text-zinc-300 rounded-lg font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {refreshing ? '刷新中...' : '刷新'}
               </button>
             </div>
           </form>

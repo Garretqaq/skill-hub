@@ -15,6 +15,7 @@ export default function UploadForm({ onClose }: UploadFormProps) {
   const [file, setFile] = useState<File | null>(null)
   const [name, setName] = useState('')
   const [version, setVersion] = useState('')
+  const [description, setDescription] = useState('')
   const [overwrite, setOverwrite] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
@@ -65,6 +66,7 @@ export default function UploadForm({ onClose }: UploadFormProps) {
       formData.append('file', file)
       if (name.trim()) formData.append('name', name.trim())
       if (version.trim()) formData.append('version', version.trim())
+      if (description.trim()) formData.append('description', description.trim())
       if (overwrite) formData.append('overwrite', 'true')
 
       const res = await fetch('/api/skills', {
@@ -202,6 +204,21 @@ export default function UploadForm({ onClose }: UploadFormProps) {
                 onChange={(e) => setVersion(e.target.value)}
                 placeholder="留空：新技能默认 1.0.0，覆盖则自动 +1"
                 className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300"
+              />
+            </div>
+
+            {/* Description Input */}
+            <div className="space-y-2">
+              <label htmlFor="skill-description" className="block text-sm font-medium text-zinc-300">
+                描述 <span className="text-zinc-600">(可选)</span>
+              </label>
+              <textarea
+                id="skill-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                placeholder="留空则使用包内自带描述"
+                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 resize-none"
               />
             </div>
 
