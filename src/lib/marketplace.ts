@@ -9,6 +9,7 @@ export interface PluginEntry {
   description?: string
   tags?: string[]
   version?: string
+  displayName?: string
 }
 export interface Marketplace {
   name: string

@@ -200,3 +200,42 @@ test('empty/absent description opt keeps package description', () => {
   )
   expect(pj.description).toBe('T')
 })
+
+test('displayName opt is stored in manifest when provided', () => {
+  const repo = seedRepo()
+  const src = tmp()
+  const sk = path.join(src, 'my-skill')
+  fs.mkdirSync(sk, { recursive: true })
+  fs.writeFileSync(path.join(sk, 'SKILL.md'), '---\nname: my-skill\ndescription: d\n---\nbody')
+
+  ingest(repo, src, { displayName: '我的技能' })
+
+  expect(readMarketplace(repo).plugins[0].displayName).toBe('我的技能')
+})
+
+test('empty/absent displayName opt leaves field unset', () => {
+  const repo = seedRepo()
+  const src = tmp()
+  const sk = path.join(src, 'my-skill')
+  fs.mkdirSync(sk, { recursive: true })
+  fs.writeFileSync(path.join(sk, 'SKILL.md'), '---\nname: my-skill\ndescription: d\n---\nbody')
+
+  ingest(repo, src)
+
+  expect(readMarketplace(repo).plugins[0].displayName).toBeUndefined()
+})
+
+test('overwrite without displayName clears previous displayName', () => {
+  const repo = seedRepo()
+  const mk = () => {
+    const src = tmp()
+    const sk = path.join(src, 'dup')
+    fs.mkdirSync(sk, { recursive: true })
+    fs.writeFileSync(path.join(sk, 'SKILL.md'), '---\nname: dup\ndescription: d\n---\nbody')
+    return src
+  }
+  ingest(repo, mk(), { displayName: '旧展示名' })
+  ingest(repo, mk(), { overwrite: true }) // 覆盖上传，本次不传 displayName
+
+  expect(readMarketplace(repo).plugins[0].displayName).toBeUndefined()
+})

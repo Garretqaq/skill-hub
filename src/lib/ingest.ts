@@ -45,7 +45,7 @@ function writeManifestEntry(repoDir: string, entry: PluginEntry): void {
   fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
 }
 
-export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string; description?: string }): IngestResult {
+export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string; description?: string; displayName?: string }): IngestResult {
   const found = findRoot(extractedDir)
   if (!found) throw new Error('unrecognized package: no plugin.json or SKILL.md')
 
@@ -130,6 +130,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
     description,
     tags,
     version,
+    displayName: opts?.displayName?.trim() || undefined,
   })
   return { name, type: found.kind }
 }
