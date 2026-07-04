@@ -20,6 +20,24 @@ test('detail returns SKILL.md body and file list', () => {
   expect(d.files).toContain('skills/hello/SKILL.md')
 })
 
+test('detail prefers README.md over SKILL.md', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-mkt-'))
+  fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(
+    path.join(dir, '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({
+      name: 'm', owner: { name: 'sgz' },
+      plugins: [{ name: 'x', source: './plugins/x' }],
+    }),
+  )
+  const sk = path.join(dir, 'plugins/x/skills/x')
+  fs.mkdirSync(sk, { recursive: true })
+  fs.writeFileSync(path.join(sk, 'SKILL.md'), '---\nname: x\n---\nskill body')
+  fs.writeFileSync(path.join(sk, 'README.md'), '---\nname: x\n---\nreadme body')
+  const d = getPluginDetail(dir, 'x')!
+  expect(d.skillMarkdown).toBe('readme body')
+})
+
 test('detail returns null for unknown plugin', () => {
   expect(getPluginDetail(REPO, 'nope')).toBeNull()
 })

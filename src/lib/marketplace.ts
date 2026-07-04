@@ -63,9 +63,12 @@ export function getPluginDetail(repoDir: string, name: string): PluginDetail | n
   if (!fs.existsSync(pluginDir)) return null
   const files: string[] = []
   walk(pluginDir, pluginDir, files)
-  const skillRel = files.find(f => /^skills\/[^/]+\/SKILL\.md$/.test(f))
-  const skillMarkdown = skillRel
-    ? matter(fs.readFileSync(path.join(pluginDir, skillRel), 'utf8')).content.trim() // 剥掉 YAML frontmatter，只展示正文
+  // 技能说明优先 README.md，缺失时回退 SKILL.md
+  const docRel =
+    files.find(f => /^skills\/[^/]+\/README\.md$/i.test(f)) ??
+    files.find(f => /^skills\/[^/]+\/SKILL\.md$/i.test(f))
+  const skillMarkdown = docRel
+    ? matter(fs.readFileSync(path.join(pluginDir, docRel), 'utf8')).content.trim() // 剥掉 YAML frontmatter，只展示正文
     : null
   return { entry, skillMarkdown, files }
 }
