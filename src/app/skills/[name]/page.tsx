@@ -20,7 +20,9 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps) {
   const { name } = await params
-  return { title: `${name} - Skill Hub` }
+  const detail = getPluginDetail(REPO_DIR, name)
+  const title = detail?.entry.displayName || name
+  return { title: `${title} - Skill Hub` }
 }
 
 export default async function SkillDetailPage({ params }: PageProps) {
@@ -61,7 +63,7 @@ export default async function SkillDetailPage({ params }: PageProps) {
             <div className="space-y-4">
               <div className="flex items-center gap-4 flex-wrap">
                 <h1 className="text-4xl md:text-5xl font-bold text-zinc-100 leading-tight">
-                  {detail.entry.name}
+                  {detail.entry.displayName || detail.entry.name}
                 </h1>
                 {detail.entry.version && (
                   <span className="px-3 py-1 text-sm font-mono font-medium bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/30 rounded-lg">
