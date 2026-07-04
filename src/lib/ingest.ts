@@ -160,7 +160,7 @@ export function findRoots(dir: string): FoundRoot[] {
   return out
 }
 
-export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; description: string; root: string | null; sourceUrl?: string }
+export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; description: string; root: string | null; sourceUrl?: string; version?: string }
 
 export function discoverPackages(dir: string): DiscoveredPackage[] {
   const packages: DiscoveredPackage[] = []
@@ -174,7 +174,8 @@ export function discoverPackages(dir: string): DiscoveredPackage[] {
         kind,
         description: pj.description || '',
         root,
-        sourceUrl: undefined
+        sourceUrl: undefined,
+        version: typeof pj.version === 'string' ? pj.version : undefined
       })
     } else {
       const fm = matter(fs.readFileSync(path.join(root, 'SKILL.md'), 'utf8')).data
@@ -183,7 +184,8 @@ export function discoverPackages(dir: string): DiscoveredPackage[] {
         kind,
         description: fm.description || '',
         root,
-        sourceUrl: undefined
+        sourceUrl: undefined,
+        version: typeof fm.version === 'string' ? fm.version : undefined
       })
     }
   }
@@ -204,7 +206,8 @@ export function discoverPackages(dir: string): DiscoveredPackage[] {
               kind: 'plugin',
               description: entry.description || '',
               root: null,
-              sourceUrl: entry.source.url
+              sourceUrl: entry.source.url,
+              version: typeof entry.version === 'string' ? entry.version : undefined
             })
           }
         }

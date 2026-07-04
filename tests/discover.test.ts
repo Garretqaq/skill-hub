@@ -81,3 +81,25 @@ test('discoverPackages 混合本地包与引用包', () => {
   expect(local).toMatchObject({ kind: 'plugin', root: expect.stringContaining('local-alpha'), sourceUrl: undefined })
   expect(ref).toMatchObject({ kind: 'plugin', root: null, sourceUrl: 'https://github.com/x/y.git' })
 })
+
+test('discoverPackages 读出 version（文件包与引用包）', () => {
+  const dir = tmp()
+  plugin(dir, 'alpha') // plugin.json version 1.0.0
+  fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(dir, '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({
+      name: 'm',
+      plugins: [{ name: 'ref', source: { url: 'https://github.com/a/b.git' }, description: 'r', version: '2.3.4' }]
+    }))
+  const pkgs = discoverPackages(dir)
+  expect(pkgs.find(p => p.name === 'alpha')?.version).toBe('1.0.0')
+  expect(pkgs.find(p => p.name === 'ref')?.version).toBe('2.3.4')
+})
+
+test('discoverPackages 缺 version 时为 undefined', () => {
+  const dir = tmp()
+  const sk = path.join(dir, 'my-skill')
+  fs.mkdirSync(sk, { recursive: true })
+  fs.writeFileSync(path.join(sk, 'SKILL.md'), '---\nname: my-skill\n---\nx') // 无 version
+  expect(discoverPackages(dir)[0].version).toBeUndefined()
+})
