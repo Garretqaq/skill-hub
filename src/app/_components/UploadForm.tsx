@@ -15,7 +15,6 @@ export default function UploadForm({ onClose }: UploadFormProps) {
   const [file, setFile] = useState<File | null>(null)
   const [name, setName] = useState('')
   const [version, setVersion] = useState('')
-  const [overwrite, setOverwrite] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -65,7 +64,7 @@ export default function UploadForm({ onClose }: UploadFormProps) {
       formData.append('file', file)
       if (name.trim()) formData.append('name', name.trim())
       if (version.trim()) formData.append('version', version.trim())
-      if (overwrite) formData.append('overwrite', 'true')
+      formData.append('overwrite', 'true') // 同名技能总是覆盖，不再需要用户勾选
 
       const res = await fetch('/api/skills', {
         method: 'POST',
@@ -204,19 +203,6 @@ export default function UploadForm({ onClose }: UploadFormProps) {
                 className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300"
               />
             </div>
-
-            {/* Overwrite */}
-            <label className="flex items-center gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={overwrite}
-                onChange={(e) => setOverwrite(e.target.checked)}
-                className="w-4 h-4 accent-cyan-500"
-              />
-              <span className="text-sm text-zinc-300">
-                覆盖同名技能 <span className="text-zinc-600">(已存在时替换)</span>
-              </span>
-            </label>
 
             {/* Actions */}
             <div className="flex items-center gap-3 pt-4">
