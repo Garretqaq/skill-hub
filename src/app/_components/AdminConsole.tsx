@@ -4,10 +4,11 @@
  */
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { PluginEntry } from '@/lib/marketplace'
+import type { UpdateItem } from '@/lib/watched'
 import UploadForm from './UploadForm'
 import SettingsForm from './SettingsForm'
 import { useToast } from '@/lib/useToast'
@@ -21,7 +22,21 @@ export default function AdminConsole({ plugins }: AdminConsoleProps) {
   const [showUpload, setShowUpload] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const router = useRouter()
-  const { toasts, hideToast, error } = useToast()
+  const { toasts, hideToast, error, success } = useToast()
+  const [updates, setUpdates] = useState<Record<string, UpdateItem>>({})
+
+  const loadUpdates = useCallback(async () => {
+    const res = await fetch('/api/updates')
+    if (!res.ok) return
+    const data = await res.json()
+    const map: Record<string, UpdateItem> = {}
+    for (const u of data.updates as UpdateItem[]) map[u.name] = u
+    setUpdates(map)
+  }, [])
+
+  useEffect(() => { loadUpdates() }, [loadUpdates])
+
+  const onChanged = useCallback(() => { router.refresh(); loadUpdates() }, [router, loadUpdates])
 
   return (
     <div className="space-y-8">
@@ -74,7 +89,14 @@ export default function AdminConsole({ plugins }: AdminConsoleProps) {
       ) : (
         <div className="divide-y divide-zinc-800 border border-zinc-800 rounded-2xl overflow-hidden bg-zinc-900/40 backdrop-blur-sm">
           {plugins.map((plugin) => (
-            <AdminRow key={plugin.name} plugin={plugin} onChanged={() => router.refresh()} onError={error} />
+            <AdminRow
+              key={plugin.name}
+              plugin={plugin}
+              update={updates[plugin.name]}
+              onChanged={onChanged}
+              onError={error}
+              onSuccess={success}
+            />
           ))}
         </div>
       )}
@@ -90,9 +112,13 @@ export default function AdminConsole({ plugins }: AdminConsoleProps) {
   )
 }
 
-function AdminRow({ plugin, onChanged, onError }: { plugin: PluginEntry; onChanged: () => void; onError: (msg: string) => void }) {
+function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
+  plugin: PluginEntry; update?: UpdateItem;
+  onChanged: () => void; onError: (msg: string) => void; onSuccess: (msg: string) => void
+}) {
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [updating, setUpdating] = useState(false)
 
   const handleDelete = async () => {
     if (!confirming) {
@@ -115,6 +141,21 @@ function AdminRow({ plugin, onChanged, onError }: { plugin: PluginEntry; onChang
     }
   }
 
+  const handleUpdate = async () => {
+    setUpdating(true)
+    try {
+      const res = await fetch('/api/updates', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: plugin.name }),
+      })
+      if (!res.ok) { onError(`更新失败: ${await res.text()}`); return }
+      onSuccess(`已更新 ${plugin.name} 到 v${update?.remoteVersion}`)
+      onChanged()
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   return (
     <div className="flex items-center gap-4 p-5 hover:bg-zinc-900/60 transition-colors">
       <div className="min-w-0 flex-1">
@@ -125,6 +166,14 @@ function AdminRow({ plugin, onChanged, onError }: { plugin: PluginEntry; onChang
           >
             {plugin.name}
           </Link>
+          {update && (
+            <span
+              title="仅按版本号检测"
+              className="px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 rounded border border-amber-500/30 whitespace-nowrap"
+            >
+              有更新 v{update.localVersion}→v{update.remoteVersion}
+            </span>
+          )}
           {plugin.tags?.slice(0, 3).map((tag) => (
             <span
               key={tag}
@@ -138,6 +187,15 @@ function AdminRow({ plugin, onChanged, onError }: { plugin: PluginEntry; onChang
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
+        {update && (
+          <button
+            onClick={handleUpdate}
+            disabled={updating}
+            className="px-3 py-1.5 text-sm rounded-lg font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+          >
+            {updating ? '更新中...' : '更新'}
+          </button>
+        )}
         <Link
           href={`/skills/${plugin.name}`}
           className="px-3 py-1.5 text-sm rounded-lg bg-zinc-800/50 text-zinc-300 border border-zinc-700 hover:bg-zinc-700/50 transition-colors"
