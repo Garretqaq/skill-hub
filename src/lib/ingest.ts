@@ -160,15 +160,56 @@ export function findRoots(dir: string): FoundRoot[] {
   return out
 }
 
-export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; description: string; root: string }
+export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; description: string; root: string | null; sourceUrl?: string }
 
 export function discoverPackages(dir: string): DiscoveredPackage[] {
-  return findRoots(dir).map(({ root, kind }) => {
+  const packages: DiscoveredPackage[] = []
+
+  // 扫描本地文件型包
+  for (const { root, kind } of findRoots(dir)) {
     if (kind === 'plugin') {
       const pj = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin/plugin.json'), 'utf8'))
-      return { name: toKebab(pj.name || path.basename(root)), kind, description: pj.description || '', root }
+      packages.push({
+        name: toKebab(pj.name || path.basename(root)),
+        kind,
+        description: pj.description || '',
+        root,
+        sourceUrl: undefined
+      })
+    } else {
+      const fm = matter(fs.readFileSync(path.join(root, 'SKILL.md'), 'utf8')).data
+      packages.push({
+        name: toKebab(fm.name || path.basename(root)),
+        kind,
+        description: fm.description || '',
+        root,
+        sourceUrl: undefined
+      })
     }
-    const fm = matter(fs.readFileSync(path.join(root, 'SKILL.md'), 'utf8')).data
-    return { name: toKebab(fm.name || path.basename(root)), kind, description: fm.description || '', root }
-  })
+  }
+
+  // 解析 marketplace.json 中的引用型包
+  const marketplacePath = path.join(dir, '.claude-plugin', 'marketplace.json')
+  if (fs.existsSync(marketplacePath)) {
+    try {
+      const marketplace = JSON.parse(fs.readFileSync(marketplacePath, 'utf8'))
+      if (Array.isArray(marketplace.plugins)) {
+        for (const entry of marketplace.plugins) {
+          if (entry.source?.url && entry.name) {
+            packages.push({
+              name: toKebab(entry.name),
+              kind: 'plugin',
+              description: entry.description || '',
+              root: null,
+              sourceUrl: entry.source.url
+            })
+          }
+        }
+      }
+    } catch {
+      // ponytail: 畸形 marketplace.json 静默跳过
+    }
+  }
+
+  return packages
 }

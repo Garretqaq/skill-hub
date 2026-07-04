@@ -44,3 +44,40 @@ test('discoverPackages 读出 name/description', () => {
   expect(pkgs[0]).toMatchObject({ name: 'alpha', kind: 'plugin', description: 'alpha desc' })
   expect(fs.existsSync(path.join(pkgs[0].root, '.claude-plugin/plugin.json'))).toBe(true)
 })
+
+test('discoverPackages 解析 marketplace.json 引用型包', () => {
+  const dir = tmp()
+  // 造一个空仓库（无本地 plugin/skill）但有 marketplace.json
+  fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(dir, '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({
+      name: 'test-market',
+      plugins: [
+        { name: 'ref-pkg-1', source: { url: 'https://github.com/a/b.git' }, description: 'ref desc 1' },
+        { name: 'ref-pkg-2', source: { url: 'https://github.com/c/d.git' }, description: 'ref desc 2' }
+      ]
+    }))
+
+  const pkgs = discoverPackages(dir)
+  expect(pkgs).toHaveLength(2)
+  expect(pkgs[0]).toMatchObject({ name: 'ref-pkg-1', kind: 'plugin', description: 'ref desc 1', root: null, sourceUrl: 'https://github.com/a/b.git' })
+  expect(pkgs[1]).toMatchObject({ name: 'ref-pkg-2', kind: 'plugin', description: 'ref desc 2', root: null, sourceUrl: 'https://github.com/c/d.git' })
+})
+
+test('discoverPackages 混合本地包与引用包', () => {
+  const dir = tmp()
+  plugin(dir, 'local-alpha')
+  fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(dir, '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({
+      name: 'mixed-market',
+      plugins: [{ name: 'ref-beta', source: { url: 'https://github.com/x/y.git' }, description: 'ref' }]
+    }))
+
+  const pkgs = discoverPackages(dir)
+  expect(pkgs).toHaveLength(2)
+  const local = pkgs.find(p => p.name === 'local-alpha')
+  const ref = pkgs.find(p => p.name === 'ref-beta')
+  expect(local).toMatchObject({ kind: 'plugin', root: expect.stringContaining('local-alpha'), sourceUrl: undefined })
+  expect(ref).toMatchObject({ kind: 'plugin', root: null, sourceUrl: 'https://github.com/x/y.git' })
+})
