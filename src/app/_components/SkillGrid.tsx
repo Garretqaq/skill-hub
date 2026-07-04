@@ -32,6 +32,7 @@ export default function SkillGrid({ plugins }: SkillGridProps) {
       const term = search.toLowerCase()
       result = result.filter(p =>
         p.name.toLowerCase().includes(term) ||
+        p.displayName?.toLowerCase().includes(term) ||
         p.description?.toLowerCase().includes(term)
       )
     }
@@ -131,7 +132,7 @@ export default function SkillGrid({ plugins }: SkillGridProps) {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <h3 className="text-xl font-bold text-zinc-100 group-hover:text-cyan-400 transition-colors duration-300 line-clamp-1">
-                        {plugin.name}
+                        {plugin.displayName || plugin.name}
                       </h3>
                       {plugin.version && (
                         <span className="flex-shrink-0 px-2 py-0.5 text-xs font-mono font-medium bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/30 rounded">
