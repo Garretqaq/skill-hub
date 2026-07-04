@@ -81,3 +81,60 @@ test('unrecognized package throws', () => {
   fs.writeFileSync(path.join(src, 'readme.txt'), 'nothing here')
   expect(() => ingest(repo, src)).toThrow(/unrecognized/)
 })
+
+function pkgVersion(repo: string, name: string): string {
+  const pj = JSON.parse(
+    fs.readFileSync(path.join(repo, `plugins/${name}/.claude-plugin/plugin.json`), 'utf8'),
+  )
+  return pj.version
+}
+function mkSkill(name: string, body: string, version?: string): string {
+  const src = tmp()
+  const sk = path.join(src, name)
+  fs.mkdirSync(sk, { recursive: true })
+  const vLine = version ? `version: ${version}\n` : ''
+  fs.writeFileSync(path.join(sk, 'SKILL.md'), `---\nname: ${name}\ndescription: d\n${vLine}---\n${body}`)
+  return src
+}
+
+test('new bare skill without version defaults to 1.0.0', () => {
+  const repo = seedRepo()
+  ingest(repo, mkSkill('a', 'v1'))
+  expect(pkgVersion(repo, 'a')).toBe('1.0.0')
+  expect(readMarketplace(repo).plugins.find(p => p.name === 'a')?.version).toBe('1.0.0')
+})
+
+test('new skill uses form version when provided', () => {
+  const repo = seedRepo()
+  ingest(repo, mkSkill('a', 'v1'), { version: '2.5.0' })
+  expect(pkgVersion(repo, 'a')).toBe('2.5.0')
+  expect(readMarketplace(repo).plugins.find(p => p.name === 'a')?.version).toBe('2.5.0')
+})
+
+test('overwrite with empty version bumps patch', () => {
+  const repo = seedRepo()
+  ingest(repo, mkSkill('a', 'v1')) // 1.0.0
+  ingest(repo, mkSkill('a', 'v2'), { overwrite: true })
+  expect(pkgVersion(repo, 'a')).toBe('1.0.1')
+})
+
+test('overwrite with higher form version uses it', () => {
+  const repo = seedRepo()
+  ingest(repo, mkSkill('a', 'v1')) // 1.0.0
+  ingest(repo, mkSkill('a', 'v2'), { overwrite: true, version: '1.4.0' })
+  expect(pkgVersion(repo, 'a')).toBe('1.4.0')
+})
+
+test('overwrite rejects non-increasing version', () => {
+  const repo = seedRepo()
+  ingest(repo, mkSkill('a', 'v1'), { version: '2.0.0' })
+  expect(() => ingest(repo, mkSkill('a', 'v2'), { overwrite: true, version: '2.0.0' }))
+    .toThrow(/higher than current/)
+  expect(() => ingest(repo, mkSkill('a', 'v2'), { overwrite: true, version: '1.0.0' }))
+    .toThrow(/higher than current/)
+})
+
+test('invalid version string throws', () => {
+  const repo = seedRepo()
+  expect(() => ingest(repo, mkSkill('a', 'v1'), { version: 'abc' })).toThrow(/invalid version/)
+})

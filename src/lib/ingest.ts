@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import matter from 'gray-matter'
 import { readMarketplace, type PluginEntry } from './marketplace'
+import { isValidVersion, bumpPatch, compareVersions } from './semver'
 
 export interface IngestResult { name: string; type: 'plugin' | 'skill' }
 
@@ -44,35 +45,72 @@ function writeManifestEntry(repoDir: string, entry: PluginEntry): void {
   fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
 }
 
-export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean }): IngestResult {
+export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string }): IngestResult {
   const found = findRoot(extractedDir)
   if (!found) throw new Error('unrecognized package: no plugin.json or SKILL.md')
 
   let name: string
   let description = ''
   let tags: string[] = []
+  let pkgVersion = ''
 
   if (found.kind === 'plugin') {
     const pj = JSON.parse(fs.readFileSync(path.join(found.root, '.claude-plugin/plugin.json'), 'utf8'))
     name = toKebab(opts?.name || pj.name || path.basename(found.root))
     description = pj.description || ''
     tags = pj.tags || pj.keywords || []
+    pkgVersion = typeof pj.version === 'string' ? pj.version : ''
   } else {
     const fm = matter(fs.readFileSync(path.join(found.root, 'SKILL.md'), 'utf8')).data
     name = toKebab(opts?.name || fm.name || path.basename(found.root))
     description = fm.description || ''
     tags = fm.tags || []
+    pkgVersion = typeof fm.version === 'string' ? fm.version : ''
   }
   if (!name) throw new Error('unrecognized package: empty name')
 
+  if (opts?.version && !isValidVersion(opts.version)) {
+    throw new Error(`invalid version: ${opts.version}`)
+  }
+
   const dest = path.join(repoDir, 'plugins', name)
-  if (fs.existsSync(dest)) {
+  const existed = fs.existsSync(dest)
+
+  // 覆盖时读现有插件版本，用于自增与防降级
+  let currentVersion = ''
+  if (existed) {
+    const curPjPath = path.join(dest, '.claude-plugin', 'plugin.json')
+    if (fs.existsSync(curPjPath)) {
+      const curPj = JSON.parse(fs.readFileSync(curPjPath, 'utf8'))
+      currentVersion = typeof curPj.version === 'string' ? curPj.version : ''
+    }
+  }
+
+  // 版本决议
+  let version: string
+  if (existed) {
+    const base = currentVersion && isValidVersion(currentVersion) ? currentVersion : '1.0.0'
+    version = opts?.version || bumpPatch(base)
+    if (compareVersions(version, base) <= 0) {
+      throw new Error(`version must be higher than current: ${version} <= ${base}`)
+    }
+  } else {
+    const fromPkg = pkgVersion && isValidVersion(pkgVersion) ? pkgVersion : ''
+    version = opts?.version || fromPkg || '1.0.0'
+  }
+
+  if (existed) {
     if (!opts?.overwrite) throw new Error(`name exists: ${name}`)
     fs.rmSync(dest, { recursive: true, force: true }) // 覆盖：先删旧目录，manifest 条目由下方替换
   }
 
   if (found.kind === 'plugin') {
     copyDir(found.root, dest)
+    // 用决议后的 version 覆盖插件自带 plugin.json 的 version
+    const pjPath = path.join(dest, '.claude-plugin', 'plugin.json')
+    const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'))
+    pj.version = version
+    fs.writeFileSync(pjPath, JSON.stringify(pj, null, 2) + '\n')
   } else {
     // 裸 skill：包壳成 plugins/<name>/skills/<name>/ + plugin.json
     const skillDir = path.join(dest, 'skills', name)
@@ -80,7 +118,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
     fs.mkdirSync(path.join(dest, '.claude-plugin'), { recursive: true })
     fs.writeFileSync(
       path.join(dest, '.claude-plugin', 'plugin.json'),
-      JSON.stringify({ name, description, version: '1.0.0' }, null, 2) + '\n',
+      JSON.stringify({ name, description, version }, null, 2) + '\n',
     )
   }
 
@@ -89,6 +127,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
     source: `./plugins/${name}`,
     description,
     tags,
+    version,
   })
   return { name, type: found.kind }
 }
