@@ -8,6 +8,7 @@ export interface PluginEntry {
   source: string
   description?: string
   tags?: string[]
+  version?: string
 }
 export interface Marketplace {
   name: string

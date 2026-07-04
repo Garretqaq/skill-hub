@@ -1,5 +1,7 @@
 /** @author sgz @since 2026-07-03 */
 import { expect, test } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { readMarketplace, listPlugins, getPluginDetail } from '@/lib/marketplace'
 
@@ -25,4 +27,18 @@ test('detail returns null for unknown plugin', () => {
 test('missing marketplace file yields empty skeleton', () => {
   const m = readMarketplace(path.resolve('tests/fixtures/does-not-exist'))
   expect(m.plugins).toEqual([])
+})
+
+test('PluginEntry carries version through read/write', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-mkt-'))
+  fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(
+    path.join(dir, '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({
+      name: 'm', owner: { name: 'sgz' },
+      plugins: [{ name: 'x', source: './plugins/x', version: '1.2.3' }],
+    }),
+  )
+  const m = readMarketplace(dir)
+  expect(m.plugins[0].version).toBe('1.2.3')
 })
