@@ -96,3 +96,12 @@ test('packageRoot 定位指定包根', async () => {
   expect(root && fs.existsSync(path.join(root, '.claude-plugin/plugin.json'))).toBe(true)
   expect(packageRoot(id, 'nope')).toBeNull()
 })
+
+test('toId 拒绝目录穿越与空 id', async () => {
+  const { toId } = await import('@/lib/watched')
+  expect(toId('owner/repo')).toBe('owner_repo')
+  expect(toId('a.b-c')).toBe('a.b-c')
+  expect(() => toId('..')).toThrow(/invalid source/)
+  expect(() => toId('.')).toThrow(/invalid source/)
+  expect(() => toId('///')).toThrow(/invalid source/)
+})

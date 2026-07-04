@@ -16,7 +16,10 @@ const cacheRoot = () => path.resolve('data/watched')
 const cacheDir = (id: string) => path.join(cacheRoot(), id)
 
 export function toId(source: string): string {
-  return source.trim().replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '')
+  const id = source.trim().replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '')
+  // 防目录穿越与空 id：'.'/'..'/空 会让 cacheDir 逃逸或指向缓存根
+  if (!id || id === '.' || id === '..') throw new Error(`invalid source for id: ${source}`)
+  return id
 }
 
 function readAll(): WatchedRepo[] {
@@ -38,10 +41,11 @@ export function cloneInto(url: string, dir: string): void {
 export function addWatched(source: string): WatchedRepo {
   const url = normalizeSource(source)
   const id = toId(source)
-  if (readAll().some(r => r.id === id)) throw new Error(`already watching: ${source}`)
+  const repos = readAll()
+  if (repos.some(r => r.id === id)) throw new Error(`already watching: ${source}`)
   cloneInto(url, cacheDir(id))
   const repo: WatchedRepo = { id, source, url, addedAt: new Date().toISOString() }
-  writeAll([...readAll(), repo])
+  writeAll([...repos, repo])
   return repo
 }
 
