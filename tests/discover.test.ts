@@ -42,7 +42,7 @@ test('discoverPackages 读出 name/description', () => {
   const pkgs = discoverPackages(dir)
   expect(pkgs).toHaveLength(1)
   expect(pkgs[0]).toMatchObject({ name: 'alpha', kind: 'plugin', description: 'alpha desc' })
-  expect(fs.existsSync(path.join(pkgs[0].root, '.claude-plugin/plugin.json'))).toBe(true)
+  expect(fs.existsSync(path.join(pkgs[0].root!, '.claude-plugin/plugin.json'))).toBe(true)
 })
 
 test('discoverPackages 解析 marketplace.json 引用型包', () => {

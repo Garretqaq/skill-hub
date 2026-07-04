@@ -156,31 +156,37 @@ export default function RemoteRepos() {
           {results.length === 0 ? (
             <p className="p-4 text-zinc-600 text-sm">无结果。</p>
           ) : (
-            results.map((pkg) => (
-              <div key={`${pkg.repoId}:${pkg.name}`} className="p-4 space-y-2">
-                <div className="flex items-center gap-3">
-                  <span className="px-2 py-0.5 text-xs font-medium bg-zinc-800/50 text-zinc-400 rounded border border-zinc-700/50">{pkg.kind}</span>
-                  <span className="text-lg font-semibold text-zinc-100 truncate">{pkg.name}</span>
-                  <span className="text-xs text-zinc-500 truncate">{pkg.source}</span>
-                  <button
-                    onClick={() => doImport(pkg)}
-                    disabled={busy === `import:${pkg.repoId}:${pkg.name}`}
-                    className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 disabled:opacity-50 transition-colors"
-                  >
-                    {busy === `import:${pkg.repoId}:${pkg.name}` ? '导入中' : '导入本市场'}
-                  </button>
-                </div>
-                <p className="text-sm text-zinc-500 truncate">{pkg.description || '暂无描述'}</p>
-                {/* 外部安装命令 */}
-                <details className="text-sm">
-                  <summary className="cursor-pointer text-zinc-400 hover:text-cyan-400">外部安装命令</summary>
-                  <div className="mt-2 space-y-1 font-mono text-xs text-zinc-300">
-                    <div>$ claude plugin marketplace add {pkg.url}</div>
-                    <div>$ claude plugin install {pkg.name}{pkg.market ? `@${pkg.market}` : ''}</div>
+            results.map((pkg) => {
+              const isReference = !!pkg.sourceUrl // 引用型包判定
+              return (
+                <div key={`${pkg.repoId}:${pkg.name}`} className="p-4 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="px-2 py-0.5 text-xs font-medium bg-zinc-800/50 text-zinc-400 rounded border border-zinc-700/50">
+                      {pkg.kind}{isReference ? ' (引用)' : ''}
+                    </span>
+                    <span className="text-lg font-semibold text-zinc-100 truncate">{pkg.name}</span>
+                    <span className="text-xs text-zinc-500 truncate">{pkg.source}</span>
+                    <button
+                      onClick={() => doImport(pkg)}
+                      disabled={isReference || busy === `import:${pkg.repoId}:${pkg.name}`}
+                      title={isReference ? '引用型包无法直接导入，请使用外部安装命令' : ''}
+                      className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {busy === `import:${pkg.repoId}:${pkg.name}` ? '导入中' : '导入本市场'}
+                    </button>
                   </div>
-                </details>
-              </div>
-            ))
+                  <p className="text-sm text-zinc-500 truncate">{pkg.description || '暂无描述'}</p>
+                  {/* 外部安装命令 */}
+                  <details className="text-sm">
+                    <summary className="cursor-pointer text-zinc-400 hover:text-cyan-400">外部安装命令</summary>
+                    <div className="mt-2 space-y-1 font-mono text-xs text-zinc-300">
+                      <div>$ claude plugin marketplace add {pkg.url}</div>
+                      <div>$ claude plugin install {pkg.name}{pkg.market ? `@${pkg.market}` : ''}</div>
+                    </div>
+                  </details>
+                </div>
+              )
+            })
           )}
         </div>
       </div>
