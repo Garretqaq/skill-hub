@@ -69,13 +69,13 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
   }
   if (!name) throw new Error('unrecognized package: empty name')
 
-  if (opts?.version && !isValidVersion(opts.version)) {
-    throw new Error(`invalid version: ${opts.version}`)
-  }
-
   const dest = path.join(repoDir, 'plugins', name)
   const existed = fs.existsSync(dest)
   if (existed && !opts?.overwrite) throw new Error(`name exists: ${name}`)
+
+  if (opts?.version && !isValidVersion(opts.version)) {
+    throw new Error(`invalid version: ${opts.version}`)
+  }
 
   // 覆盖时读现有插件版本，用于自增与防降级
   let currentVersion = ''

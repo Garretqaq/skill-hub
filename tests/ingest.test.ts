@@ -89,6 +89,20 @@ test('non-overwrite request to existing name throws name-exists even with a non-
     .toThrow(/name exists/)
 })
 
+test('non-overwrite request to existing name throws name-exists even with malformed version', () => {
+  const repo = seedRepo()
+  const mk = (body: string) => {
+    const src = tmp()
+    const sk = path.join(src, 'dup3')
+    fs.mkdirSync(sk, { recursive: true })
+    fs.writeFileSync(path.join(sk, 'SKILL.md'), `---\nname: dup3\ndescription: d\n---\n${body}`)
+    return src
+  }
+  ingest(repo, mk('v1'))
+  expect(() => ingest(repo, mk('v2'), { version: 'abc' })) // no overwrite, invalid version
+    .toThrow(/name exists/)
+})
+
 test('unrecognized package throws', () => {
   const repo = seedRepo()
   const src = tmp()
