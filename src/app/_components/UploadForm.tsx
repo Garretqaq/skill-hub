@@ -14,6 +14,7 @@ interface UploadFormProps {
 export default function UploadForm({ onClose }: UploadFormProps) {
   const [file, setFile] = useState<File | null>(null)
   const [name, setName] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [version, setVersion] = useState('')
   const [description, setDescription] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -64,6 +65,7 @@ export default function UploadForm({ onClose }: UploadFormProps) {
       const formData = new FormData()
       formData.append('file', file)
       if (name.trim()) formData.append('name', name.trim())
+      if (displayName.trim()) formData.append('displayName', displayName.trim())
       if (version.trim()) formData.append('version', version.trim())
       if (description.trim()) formData.append('description', description.trim())
       formData.append('overwrite', 'true')
@@ -176,17 +178,32 @@ export default function UploadForm({ onClose }: UploadFormProps) {
               </div>
             </div>
 
+            {/* Display Name Input */}
+            <div className="space-y-2">
+              <label htmlFor="skill-display-name" className="block text-sm font-medium text-zinc-300">
+                展示名称 <span className="text-zinc-600">(可选)</span>
+              </label>
+              <input
+                id="skill-display-name"
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="留空则使用技能标识"
+                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300"
+              />
+            </div>
+
             {/* Name Input */}
             <div className="space-y-2">
               <label htmlFor="skill-name" className="block text-sm font-medium text-zinc-300">
-                技能名称 <span className="text-zinc-600">(可选)</span>
+                技能标识 <span className="text-zinc-600">(可选)</span>
               </label>
               <input
                 id="skill-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="留空则使用文件名"
+                placeholder="留空则使用文件名（用于目录名/URL）"
                 className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300"
               />
             </div>
