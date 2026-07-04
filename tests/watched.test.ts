@@ -105,3 +105,45 @@ test('toId 拒绝目录穿越与空 id', async () => {
   expect(() => toId('.')).toThrow(/invalid source/)
   expect(() => toId('///')).toThrow(/invalid source/)
 })
+
+test('toId 不同 source 可能产生相同 id（碰撞）', async () => {
+  const { toId } = await import('@/lib/watched')
+  expect(toId('a/b')).toBe('a_b')
+  expect(toId('a_b')).toBe('a_b')
+  expect(toId('a/b')).toBe(toId('a_b'))
+})
+
+test('refreshAll 容错：单个失败不影响其余，全部尝试后抛聚合错误', async () => {
+  const { cloneInto, refreshAll } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha')
+  const validId = 'valid-repo'
+  const brokenId = 'broken-repo'
+
+  // 造一个正常的缓存
+  cloneInto(remote, path.join(work, 'data/watched', validId))
+
+  // 手写两条监听：一个正常，一个缓存目录缺失
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({
+      repos: [
+        { id: validId, source: remote, url: remote, addedAt: 'x' },
+        { id: brokenId, source: 'fake', url: 'fake', addedAt: 'x' }
+      ]
+    }))
+
+  // 远程新增一个插件并提交
+  const root = path.join(remote, 'plugins', 'beta')
+  fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'beta', description: 'beta desc', version: '1.0.0' }))
+  execFileSync('git', ['add', '-A'], { cwd: remote })
+  execFileSync('git', ['commit', '-q', '-m', 'add beta'], { cwd: remote })
+
+  // refreshAll 应该抛聚合错误
+  expect(() => refreshAll()).toThrow(/refresh failed/)
+
+  // 但 validId 应该已经刷新成功
+  const { buildIndex } = await import('@/lib/watched')
+  const idx = buildIndex()
+  expect(idx.filter(p => p.repoId === validId).map(p => p.name).sort()).toEqual(['alpha', 'beta'])
+})

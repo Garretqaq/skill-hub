@@ -42,7 +42,11 @@ export function addWatched(source: string): WatchedRepo {
   const url = normalizeSource(source)
   const id = toId(source)
   const repos = readAll()
-  if (repos.some(r => r.id === id)) throw new Error(`already watching: ${source}`)
+  const existing = repos.find(r => r.id === id)
+  if (existing) {
+    if (existing.source === source) throw new Error(`already watching: ${source}`)
+    throw new Error(`source "${source}" 与已监听的 "${existing.source}" 冲突（生成相同 id "${id}"）`)
+  }
   cloneInto(url, cacheDir(id))
   const repo: WatchedRepo = { id, source, url, addedAt: new Date().toISOString() }
   writeAll([...repos, repo])
@@ -66,7 +70,14 @@ export function refreshWatched(id: string): void {
     cloneInto(repo.url, dir)
   }
 }
-export function refreshAll(): void { for (const r of readAll()) refreshWatched(r.id) }
+// 逐个刷新，单个失败不影响其余；全部尝试后再抛聚合错误
+export function refreshAll(): void {
+  const errs: string[] = []
+  for (const r of readAll()) {
+    try { refreshWatched(r.id) } catch (e) { errs.push(`${r.id}: ${String(e)}`) }
+  }
+  if (errs.length) throw new Error(`refresh failed:\n${errs.join('\n')}`)
+}
 
 function marketNameOf(id: string): string | null {
   try {
