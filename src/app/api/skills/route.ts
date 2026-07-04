@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     new AdmZip(buf).extractAllTo(tmp, true)
     ensureRepo()
     const before = headOf() // ensureRepo 保证有基础提交，push 失败时回滚到此
-    const res = ingest(REPO_DIR(), tmp, {
+    const res = ingest(REPO_DIR, tmp, {
       name: nameOverride ? String(nameOverride) : undefined,
       overwrite,
       version: version ? String(version).trim() : undefined,

@@ -2,7 +2,6 @@
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { REPO_DIR } from './config'
 import { discoverPackages } from './ingest'
 import { normalizeSource } from './remote'
 import { listPlugins } from './marketplace'
@@ -141,7 +140,7 @@ export interface UpdateItem {
 
 // 已导入包 vs 监听库聚合索引，按 name 比对 version，仅返回远程版本更高者
 export function updateStatus(): UpdateItem[] {
-  const repoDir = REPO_DIR()
+  const repoDir = path.resolve(process.env.MARKETPLACE_DIR || 'data/marketplace')
   const local = listPlugins(repoDir)
 
   // 远程按 name 取 version 最高者（同名多库时）

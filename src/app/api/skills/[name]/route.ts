@@ -11,13 +11,13 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ name: s
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const { name } = await ctx.params
 
-  const pluginDir = path.join(REPO_DIR(), 'plugins', name)
+  const pluginDir = path.join(REPO_DIR, 'plugins', name)
   if (!fs.existsSync(pluginDir)) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
   const before = headOf() // 记录删除前状态，push 失败时回滚
   fs.rmSync(pluginDir, { recursive: true, force: true })
-  const manifest = path.join(REPO_DIR(), '.claude-plugin', 'marketplace.json')
-  const m = readMarketplace(REPO_DIR())
+  const manifest = path.join(REPO_DIR, '.claude-plugin', 'marketplace.json')
+  const m = readMarketplace(REPO_DIR)
   m.plugins = m.plugins.filter(p => p.name !== name)
   fs.writeFileSync(manifest, JSON.stringify(m, null, 2) + '\n')
 

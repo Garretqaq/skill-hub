@@ -38,7 +38,7 @@ export function getRepoUrl(): string {
 
 // 市场名的真实源是 manifest（Claude 解析 @market 用的就是它），仓库未建时回退 env 默认
 export function getMarketName(): string {
-  return readMarketplace(REPO_DIR()).name || MARKETPLACE_NAME
+  return readMarketplace(REPO_DIR).name || MARKETPLACE_NAME
 }
 
 // 供前端展示：base 地址脱敏返回，token 只回传是否已配置

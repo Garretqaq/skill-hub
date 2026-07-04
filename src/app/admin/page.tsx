@@ -15,7 +15,7 @@ export default async function AdminPage() {
   const user = await getUser()
   if (!user) redirect('/login')
 
-  const plugins = listPlugins(REPO_DIR())
+  const plugins = listPlugins(REPO_DIR)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">

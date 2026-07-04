@@ -20,14 +20,14 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps) {
   const { name } = await params
-  const detail = getPluginDetail(REPO_DIR(), name)
+  const detail = getPluginDetail(REPO_DIR, name)
   const title = detail?.entry.displayName || name
   return { title: `${title} - Skill Hub` }
 }
 
 export default async function SkillDetailPage({ params }: PageProps) {
   const { name } = await params
-  const detail = getPluginDetail(REPO_DIR(), name)
+  const detail = getPluginDetail(REPO_DIR, name)
 
   if (!detail) {
     notFound()
