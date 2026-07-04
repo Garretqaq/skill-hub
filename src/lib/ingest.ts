@@ -45,7 +45,7 @@ function writeManifestEntry(repoDir: string, entry: PluginEntry): void {
   fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
 }
 
-export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string }): IngestResult {
+export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string; description?: string }): IngestResult {
   const found = findRoot(extractedDir)
   if (!found) throw new Error('unrecognized package: no plugin.json or SKILL.md')
 
@@ -67,6 +67,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
     tags = fm.tags || []
     pkgVersion = typeof fm.version === 'string' ? fm.version : ''
   }
+  if (opts?.description) description = opts.description // 非空时覆盖包内描述
   if (!name) throw new Error('unrecognized package: empty name')
 
   const dest = path.join(repoDir, 'plugins', name)
@@ -110,6 +111,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
     const pjPath = path.join(dest, '.claude-plugin', 'plugin.json')
     const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'))
     pj.version = version
+    pj.description = description // 与 manifest 保持一致
     fs.writeFileSync(pjPath, JSON.stringify(pj, null, 2) + '\n')
   } else {
     // 裸 skill：包壳成 plugins/<name>/skills/<name>/ + plugin.json

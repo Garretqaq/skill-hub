@@ -166,3 +166,37 @@ test('invalid version string throws', () => {
   const repo = seedRepo()
   expect(() => ingest(repo, mkSkill('a', 'v1'), { version: 'abc' })).toThrow(/invalid version/)
 })
+
+test('description opt overrides package description in both manifest and plugin.json', () => {
+  const repo = seedRepo()
+  const src = tmp()
+  const sk = path.join(src, 'my-skill')
+  fs.mkdirSync(sk, { recursive: true })
+  fs.writeFileSync(path.join(sk, 'SKILL.md'), '---\nname: my-skill\ndescription: pkg\n---\nbody')
+
+  ingest(repo, src, { description: 'custom desc' })
+
+  expect(readMarketplace(repo).plugins[0].description).toBe('custom desc')
+  const pj = JSON.parse(
+    fs.readFileSync(path.join(repo, 'plugins/my-skill/.claude-plugin/plugin.json'), 'utf8'),
+  )
+  expect(pj.description).toBe('custom desc')
+})
+
+test('empty/absent description opt keeps package description', () => {
+  const repo = seedRepo()
+  const src = tmp()
+  const root = path.join(src, 'toolkit')
+  fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'toolkit', description: 'T', version: '1.0.0' }))
+  fs.mkdirSync(path.join(root, 'skills/a'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'skills/a/SKILL.md'), '---\nname: a\n---\nx')
+
+  ingest(repo, src) // 不传 description
+  expect(readMarketplace(repo).plugins[0].description).toBe('T')
+  const pj = JSON.parse(
+    fs.readFileSync(path.join(repo, 'plugins/toolkit/.claude-plugin/plugin.json'), 'utf8'),
+  )
+  expect(pj.description).toBe('T')
+})
