@@ -140,6 +140,9 @@ export interface UpdateItem {
 
 // 已导入包 vs 监听库聚合索引，按 name 比对 version，仅返回远程版本更高者
 export function updateStatus(): UpdateItem[] {
+  // ponytail: 不复用 config.ts 的 REPO_DIR 常量——它在模块加载时计算一次，
+  // 而本文件其余路径（storeFile/cacheRoot 等）均按调用时的 cwd 现算，测试靠 chdir 隔离；
+  // 复用会读到导入时的旧 cwd，导致测试失败。此处按同一惯例现算。
   const repoDir = path.resolve(process.env.MARKETPLACE_DIR || 'data/marketplace')
   const local = listPlugins(repoDir)
 
