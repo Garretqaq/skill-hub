@@ -68,6 +68,7 @@
 
 - 源包无 version 或非法 → 无法比较，视为无更新（**绝不误报**）。
 - 引用型包 version 取自监听库 marketplace.json；缺失则检测不到（已知局限，UI 注明）。
+- 引用型包的 version 与实际克隆内容分属独立维护：marketplace.json entry 写的版本号，和 clone 源仓库默认分支 HEAD 得到的实际内容，二者可能不一致（entry 标 v2.0.0 但 HEAD 内容实为 v1.5.0 等效），属已知局限而非 bug。
 - `POST` push 失败 → `resetTo(before)` 回滚（复用现有 import 逻辑）。
 - 同名包出现在多个监听库 → 取 version 最高者为源。
 - 更新时源已消失（监听库被移除/缓存缺失）→ 返回 404，UI 提示先刷新/重新监听。

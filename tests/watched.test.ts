@@ -240,3 +240,47 @@ test('updateStatus：远程包无 version 不误报', async () => {
     JSON.stringify({ name: 'alpha', description: 'alpha desc' }))
   expect(updateStatus()).toHaveLength(0)
 })
+
+test('updateStatus：远程版本非法（非 semver）不误报', async () => {
+  const { cloneInto, updateStatus } = await import('@/lib/watched')
+  const { ingest } = await import('@/lib/ingest')
+  const remote = remoteRepo('alpha')
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+  ingest(path.join(work, 'data/marketplace'), path.join(work, 'data/watched', id, 'plugins', 'alpha'))
+  // 远程 version 是格式非法的字符串（非缺失，而是不满足 \d+\.\d+\.\d+）
+  fs.writeFileSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'alpha', description: 'alpha desc', version: 'abc' }))
+  expect(updateStatus()).toHaveLength(0)
+})
+
+test('updateStatus：同名包跨多个监听库时取最高版本', async () => {
+  const { cloneInto, updateStatus } = await import('@/lib/watched')
+  const { ingest } = await import('@/lib/ingest')
+  const repoLow = remoteRepo('shared')   // shared v1.0.0
+  const repoHigh = remoteRepo('shared')  // 另一个远程库同样有 shared，先建后升到 v2.0.0
+  fs.writeFileSync(path.join(repoHigh, 'plugins/shared/.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'shared', description: 'shared desc', version: '2.0.0' }))
+  execFileSync('git', ['commit', '-qam', 'bump'], { cwd: repoHigh })
+
+  const idLow = 'shared-low'
+  const idHigh = 'shared-high'
+  cloneInto(repoLow, path.join(work, 'data/watched', idLow))
+  cloneInto(repoHigh, path.join(work, 'data/watched', idHigh))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({
+      repos: [
+        { id: idLow, source: repoLow, url: repoLow, addedAt: 'x' },
+        { id: idHigh, source: repoHigh, url: repoHigh, addedAt: 'x' },
+      ]
+    }))
+
+  // 本地导入 shared@1.0.0（低于两个远程版本）
+  ingest(path.join(work, 'data/marketplace'), path.join(work, 'data/watched', idLow, 'plugins', 'shared'))
+
+  const ups = updateStatus()
+  expect(ups).toHaveLength(1)
+  expect(ups[0]).toMatchObject({ name: 'shared', localVersion: '1.0.0', remoteVersion: '2.0.0' })
+})
