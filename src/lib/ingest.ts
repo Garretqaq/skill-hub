@@ -188,7 +188,8 @@ export function discoverPackages(dir: string): DiscoveredPackage[] {
     }
   }
 
-  // 解析 marketplace.json 中的引用型包
+  // 解析 marketplace.json 中的引用型包（本地包优先）
+  const localNames = new Set(packages.map(p => p.name))
   const marketplacePath = path.join(dir, '.claude-plugin', 'marketplace.json')
   if (fs.existsSync(marketplacePath)) {
     try {
@@ -196,8 +197,10 @@ export function discoverPackages(dir: string): DiscoveredPackage[] {
       if (Array.isArray(marketplace.plugins)) {
         for (const entry of marketplace.plugins) {
           if (entry.source?.url && entry.name) {
+            const kebabName = toKebab(entry.name)
+            if (localNames.has(kebabName)) continue // ponytail: 本地包优先，跳过同名引用
             packages.push({
-              name: toKebab(entry.name),
+              name: kebabName,
               kind: 'plugin',
               description: entry.description || '',
               root: null,

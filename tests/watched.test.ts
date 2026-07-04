@@ -175,3 +175,23 @@ test('buildIndex 包含引用型包的 sourceUrl', async () => {
   expect(local).toMatchObject({ repoId: id, name: 'alpha', kind: 'plugin', sourceUrl: undefined })
   expect(ref).toMatchObject({ repoId: id, name: 'external-pkg', kind: 'plugin', sourceUrl: 'https://github.com/ext/pkg.git' })
 })
+
+test('packageRoot 对引用型包返回 null', async () => {
+  const { cloneInto, packageRoot } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha')
+  const id = 'local-vs-ref'
+
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  const cacheDir = path.join(work, 'data/watched', id)
+  fs.mkdirSync(path.join(cacheDir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(cacheDir, '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({
+      name: 'test-market',
+      plugins: [{ name: 'ref-only', source: { url: 'https://github.com/ext/pkg.git' }, description: '' }]
+    }))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+
+  expect(packageRoot(id, 'alpha')).toBeTruthy() // 本地包
+  expect(packageRoot(id, 'ref-only')).toBeNull() // 引用型包
+})

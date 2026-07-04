@@ -5,7 +5,6 @@
 'use client'
 
 import { useState } from 'react'
-import UploadForm from './UploadForm'
 import ThemeToggle from './ThemeToggle'
 
 interface NavBarProps {
@@ -13,7 +12,7 @@ interface NavBarProps {
 }
 
 export default function NavBar({ user }: NavBarProps) {
-  const [showUpload, setShowUpload] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
   const handleLogout = async () => {
@@ -28,8 +27,7 @@ export default function NavBar({ user }: NavBarProps) {
   }
 
   return (
-    <>
-      <nav className="sticky top-0 z-40 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800">
+    <nav className="sticky top-0 z-40 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
@@ -49,12 +47,6 @@ export default function NavBar({ user }: NavBarProps) {
               <ThemeToggle />
               {user ? (
                 <>
-                  {/* User Info */}
-                  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg border border-zinc-700">
-                    <div className="w-2 h-2 bg-green-500 rounded-full" />
-                    <span className="text-sm text-zinc-400">{user.username}</span>
-                  </div>
-
                   {/* Console Link */}
                   <a
                     href="/admin"
@@ -66,28 +58,42 @@ export default function NavBar({ user }: NavBarProps) {
                     <span className="hidden sm:inline">控制台</span>
                   </a>
 
-                  {/* Upload Button */}
-                  <button
-                    onClick={() => setShowUpload(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded-lg hover:bg-cyan-500/20 hover:border-cyan-500/50 transition-all duration-300 font-medium"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                    <span className="hidden sm:inline">上传</span>
-                  </button>
+                  {/* User Menu */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setMenuOpen((v) => !v)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors cursor-pointer"
+                    >
+                      <div className="w-2 h-2 bg-green-500 rounded-full" />
+                      <span className="hidden sm:inline text-sm text-zinc-400">{user.username}</span>
+                      <svg
+                        className={`w-4 h-4 text-zinc-500 transition-transform ${menuOpen ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
 
-                  {/* Logout Button */}
-                  <button
-                    onClick={handleLogout}
-                    disabled={loggingOut}
-                    className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors font-medium disabled:opacity-50"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    <span className="hidden sm:inline">登出</span>
-                  </button>
+                    {menuOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                        <div className="absolute right-0 mt-2 w-40 z-50 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl py-1">
+                          <button
+                            onClick={handleLogout}
+                            disabled={loggingOut}
+                            className="flex items-center gap-2 w-full px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                            登出
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </>
               ) : (
                 <a
@@ -104,9 +110,5 @@ export default function NavBar({ user }: NavBarProps) {
           </div>
         </div>
       </nav>
-
-      {/* Upload Modal */}
-      {showUpload && <UploadForm onClose={() => setShowUpload(false)} />}
-    </>
   )
 }
