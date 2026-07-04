@@ -147,3 +147,31 @@ test('refreshAll 容错：单个失败不影响其余，全部尝试后抛聚合
   const idx = buildIndex()
   expect(idx.filter(p => p.repoId === validId).map(p => p.name).sort()).toEqual(['alpha', 'beta'])
 })
+
+test('buildIndex 包含引用型包的 sourceUrl', async () => {
+  const { cloneInto, buildIndex } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha')
+  const id = 'market-with-refs'
+
+  // 手工克隆一个含 marketplace.json 的远程
+  cloneInto(remote, path.join(work, 'data/watched', id))
+
+  // 在该缓存里追加一个 marketplace.json（模拟索引型仓库）
+  const cacheDir = path.join(work, 'data/watched', id)
+  fs.mkdirSync(path.join(cacheDir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(cacheDir, '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({
+      name: 'test-market',
+      plugins: [{ name: 'external-pkg', source: { url: 'https://github.com/ext/pkg.git' }, description: 'ext' }]
+    }))
+
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+
+  const idx = buildIndex()
+  const local = idx.find(p => p.name === 'alpha')
+  const ref = idx.find(p => p.name === 'external-pkg')
+
+  expect(local).toMatchObject({ repoId: id, name: 'alpha', kind: 'plugin', sourceUrl: undefined })
+  expect(ref).toMatchObject({ repoId: id, name: 'external-pkg', kind: 'plugin', sourceUrl: 'https://github.com/ext/pkg.git' })
+})

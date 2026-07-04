@@ -9,6 +9,7 @@ export interface WatchedRepo { id: string; source: string; url: string; addedAt:
 export interface IndexedPackage {
   repoId: string; source: string; url: string; market: string | null
   name: string; kind: 'plugin' | 'skill'; description: string
+  sourceUrl?: string  // 引用型包的外部 git URL（本地包为 undefined）
 }
 
 const storeFile = () => path.resolve('data/watched.json')
@@ -94,7 +95,16 @@ export function buildIndex(): IndexedPackage[] {
     if (!fs.existsSync(dir)) continue
     const market = marketNameOf(r.id)
     for (const pkg of discoverPackages(dir)) {
-      out.push({ repoId: r.id, source: r.source, url: r.url, market, name: pkg.name, kind: pkg.kind, description: pkg.description })
+      out.push({
+        repoId: r.id,
+        source: r.source,
+        url: r.url,
+        market,
+        name: pkg.name,
+        kind: pkg.kind,
+        description: pkg.description,
+        sourceUrl: pkg.sourceUrl  // 新增
+      })
     }
   }
   return out
