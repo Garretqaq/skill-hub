@@ -32,3 +32,16 @@ test('拒绝 file://', () => {
 test('拒绝空来源', () => {
   expect(() => normalizeSource('  ')).toThrow(/empty source/)
 })
+
+test('拒绝大小写变体 file://', () => {
+  expect(() => normalizeSource('FILE:///etc')).toThrow(/invalid source/)
+  expect(() => normalizeSource('File:///x')).toThrow(/invalid source/)
+})
+
+test('ssh:// URL 原样返回', () => {
+  expect(normalizeSource('ssh://git@github.com/x/y.git')).toBe('ssh://git@github.com/x/y.git')
+})
+
+test('大写 HTTPS 协议原样返回', () => {
+  expect(normalizeSource('HTTPS://github.com/a/b.git')).toBe('HTTPS://github.com/a/b.git')
+})
