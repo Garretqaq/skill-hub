@@ -151,6 +151,8 @@ function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
       if (!res.ok) { onError(`更新失败: ${await res.text()}`); return }
       onSuccess(`已更新 ${plugin.name} 到 v${update?.remoteVersion}`)
       onChanged()
+    } catch (err) {
+      onError(`更新失败: ${err}`)
     } finally {
       setUpdating(false)
     }
