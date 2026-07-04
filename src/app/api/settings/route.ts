@@ -1,7 +1,7 @@
 /** @author sgz @since 2026-07-03 */
 import { NextRequest, NextResponse } from 'next/server'
 import { getUser } from '@/lib/session'
-import { REPO_DIR } from '@/lib/config'
+import { REPO_DIR, stripCreds } from '@/lib/config'
 import { getSettings, saveSettings, getRepoUrl, getMarketName } from '@/lib/settings'
 import { writeMarketName } from '@/lib/marketplace'
 import { setRemoteUrl, ensureRepo, commitAll, push, headOf, resetTo, syncFromRemote } from '@/lib/repo'
@@ -21,13 +21,13 @@ export async function PUT(req: NextRequest) {
   try {
     setRemoteUrl(getRepoUrl()) // 用注入 token 后的完整地址更新 origin
   } catch (e) {
-    return NextResponse.json({ error: 'set remote failed', detail: String(e) }, { status: 500 })
+    return NextResponse.json({ error: 'set remote failed', detail: stripCreds(String(e)) }, { status: 500 })
   }
 
   try {
     syncFromRemote() // 保存后以远程为准拉取一次，rename 写在最新状态之上
   } catch (e) {
-    return NextResponse.json({ error: 'refresh failed', detail: String(e) }, { status: 500 })
+    return NextResponse.json({ error: 'refresh failed', detail: stripCreds(String(e)) }, { status: 500 })
   }
 
   // 市场名写入 manifest 并同步到远程（Claude 解析 @market 的真实源）
@@ -41,7 +41,7 @@ export async function PUT(req: NextRequest) {
       push()
     } catch (e) {
       if (before) resetTo(before)
-      return NextResponse.json({ error: 'push failed', detail: String(e) }, { status: 500 })
+      return NextResponse.json({ error: 'push failed', detail: stripCreds(String(e)) }, { status: 500 })
     }
   }
   return NextResponse.json(getSettings())

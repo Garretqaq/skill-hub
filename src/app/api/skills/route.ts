@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import AdmZip from 'adm-zip'
 import { getUser } from '@/lib/session'
-import { REPO_DIR } from '@/lib/config'
+import { REPO_DIR, stripCreds } from '@/lib/config'
 import { ensureRepo, commitAll, push, headOf, resetTo } from '@/lib/repo'
 import { ingest } from '@/lib/ingest'
 
@@ -37,11 +37,11 @@ export async function POST(req: NextRequest) {
       push()
     } catch (e) {
       if (before) resetTo(before)
-      return NextResponse.json({ error: 'push failed', detail: String(e) }, { status: 500 })
+      return NextResponse.json({ error: 'push failed', detail: stripCreds(String(e)) }, { status: 500 })
     }
     return NextResponse.json(res)
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 400 })
+    return NextResponse.json({ error: stripCreds(String(e)) }, { status: 400 })
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true })
   }

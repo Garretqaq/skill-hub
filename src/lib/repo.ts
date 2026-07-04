@@ -70,12 +70,14 @@ export function setRemoteUrl(url: string): void {
 
 // 远程为准，强制拉取覆盖本地。远程空或历史不相干均安全处理。
 export function syncFromRemoteIn(dir: string, url: string): void {
-  setRemoteUrlIn(dir, url)                                  // 确保 origin 指向目标
+  setRemoteUrlIn(dir, url)                                     // 确保 origin 指向目标
   const heads = git(dir, ['ls-remote', '--heads', 'origin']).trim()
-  if (!heads) return                                        // 远程无分支/提交，跳过
+  if (!heads) return                                           // 远程无分支/提交，跳过
   git(dir, ['fetch', 'origin'])
-  git(dir, ['reset', '--hard', 'FETCH_HEAD'])               // fetch origin 后 FETCH_HEAD 指向远程默认分支
-  git(dir, ['clean', '-fd'])                                // 删除未追踪文件，使强制覆盖完整
+  const ahead = git(dir, ['rev-list', 'FETCH_HEAD..HEAD']).trim() // 本地领先远程的（未推送）提交
+  if (ahead) return                                            // 有未推送改动则保留本地，避免首次配置远程时静默覆盖
+  git(dir, ['reset', '--hard', 'FETCH_HEAD'])                  // 无本地独有提交时才以远程覆盖
+  git(dir, ['clean', '-fd'])                                   // 清理未追踪残留，使覆盖完整
 }
 export function syncFromRemote(): void {
   ensureRepo()                                              // .git 缺失时 clone（clone 即已同步）

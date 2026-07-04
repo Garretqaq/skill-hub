@@ -10,13 +10,15 @@ export const ADMIN_USER = process.env.ADMIN_USER || ''
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 export const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-insecure-secret'
 
-export function stripCreds(url: string): string {
+export function stripCreds(s: string): string {
+  // 先尝试作为完整 URL 处理
   try {
-    const u = new URL(url)
+    const u = new URL(s)
     u.username = ''
     u.password = ''
     return u.toString()
   } catch {
-    return url
+    // 非纯 URL（如 git 错误消息）：替换消息中嵌入的 https://user:pass@host 或 https://token@host
+    return s.replace(/https?:\/\/[^@\s]+@/g, 'https://')
   }
 }
