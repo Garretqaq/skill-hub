@@ -12,5 +12,5 @@ export async function POST() {
   } catch (e) {
     return NextResponse.json({ error: 'refresh failed', detail: stripCreds(String(e)) }, { status: 500 })
   }
-  return NextResponse.json({ count: listPlugins(REPO_DIR).length })
+  return NextResponse.json({ count: listPlugins(REPO_DIR()).length })
 }

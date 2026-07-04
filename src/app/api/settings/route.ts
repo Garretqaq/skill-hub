@@ -35,7 +35,7 @@ export async function PUT(req: NextRequest) {
   if (newName && newName !== getMarketName()) {
     ensureRepo()
     const before = headOf()
-    writeMarketName(REPO_DIR, newName)
+    writeMarketName(REPO_DIR(), newName)
     commitAll(`rename marketplace to ${newName}`)
     try {
       push()

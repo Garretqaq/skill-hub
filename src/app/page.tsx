@@ -17,7 +17,7 @@ export function generateMetadata() {
 }
 
 export default function HomePage() {
-  const plugins = listPlugins(REPO_DIR)
+  const plugins = listPlugins(REPO_DIR())
   const marketName = getMarketName()
 
   return (

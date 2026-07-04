@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       // 导入（同本地包流程）
       ensureRepo()
       const before = headOf()
-      const res = ingest(REPO_DIR, pkg.root, { overwrite: true })
+      const res = ingest(REPO_DIR(), pkg.root, { overwrite: true })
       commitAll(`add ${res.name} (from remote ${sourceUrl})`)
       try {
         push()
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   ensureRepo()
   const before = headOf()
   try {
-    const res = ingest(REPO_DIR, root, { overwrite: true })
+    const res = ingest(REPO_DIR(), root, { overwrite: true })
     commitAll(`add ${res.name} (from ${id})`)
     try {
       push()
