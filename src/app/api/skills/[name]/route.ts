@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getUser } from '@/lib/session'
-import { REPO_DIR } from '@/lib/config'
+import { REPO_DIR, stripCreds } from '@/lib/config'
 import { readMarketplace } from '@/lib/marketplace'
 import { commitAll, push, headOf, resetTo } from '@/lib/repo'
 
@@ -26,7 +26,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ name: s
     push()
   } catch (e) {
     if (before) resetTo(before)
-    return NextResponse.json({ error: 'push failed', detail: String(e) }, { status: 500 })
+    return NextResponse.json({ error: 'push failed', detail: stripCreds(String(e)) }, { status: 500 })
   }
   return NextResponse.json({ ok: true })
 }
