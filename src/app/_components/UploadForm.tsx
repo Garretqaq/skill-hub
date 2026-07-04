@@ -14,6 +14,7 @@ interface UploadFormProps {
 export default function UploadForm({ onClose }: UploadFormProps) {
   const [file, setFile] = useState<File | null>(null)
   const [name, setName] = useState('')
+  const [version, setVersion] = useState('')
   const [overwrite, setOverwrite] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
@@ -63,6 +64,7 @@ export default function UploadForm({ onClose }: UploadFormProps) {
       const formData = new FormData()
       formData.append('file', file)
       if (name.trim()) formData.append('name', name.trim())
+      if (version.trim()) formData.append('version', version.trim())
       if (overwrite) formData.append('overwrite', 'true')
 
       const res = await fetch('/api/skills', {
@@ -184,6 +186,21 @@ export default function UploadForm({ onClose }: UploadFormProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="留空则使用文件名"
+                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300"
+              />
+            </div>
+
+            {/* Version Input */}
+            <div className="space-y-2">
+              <label htmlFor="skill-version" className="block text-sm font-medium text-zinc-300">
+                版本号 <span className="text-zinc-600">(可选，如 1.0.0)</span>
+              </label>
+              <input
+                id="skill-version"
+                type="text"
+                value={version}
+                onChange={(e) => setVersion(e.target.value)}
+                placeholder="留空：新技能默认 1.0.0，覆盖则自动 +1"
                 className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300"
               />
             </div>
