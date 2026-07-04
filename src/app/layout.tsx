@@ -7,6 +7,7 @@ import { Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { getUser } from '@/lib/auth'
 import NavBar from './_components/NavBar'
+import { themeInitScript } from './_components/ThemeToggle'
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -33,8 +34,12 @@ export default async function RootLayout({
   return (
     <html
       lang="zh-CN"
+      suppressHydrationWarning
       className={`${outfit.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="min-h-full flex flex-col font-sans">
         <NavBar user={user} />
         {children}

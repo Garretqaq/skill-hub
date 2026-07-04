@@ -6,6 +6,7 @@
 
 import { useState } from 'react'
 import UploadForm from './UploadForm'
+import ThemeToggle from './ThemeToggle'
 
 interface NavBarProps {
   user: { username: string } | null
@@ -45,6 +46,7 @@ export default function NavBar({ user }: NavBarProps) {
 
             {/* Actions */}
             <div className="flex items-center gap-3">
+              <ThemeToggle />
               {user ? (
                 <>
                   {/* User Info */}

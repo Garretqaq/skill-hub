@@ -4,6 +4,37 @@
 :root {
   --background: #09090b;
   --foreground: #fafafa;
+  --scrollbar-track: #18181b;
+  --scrollbar-thumb: #3f3f46;
+  --scrollbar-thumb-hover: #52525b;
+}
+
+/*
+ * Light theme: the whole app is built on a single zinc ramp used for both
+ * dark surfaces (zinc-950/900/800) and light text (zinc-100/200/300). Inverting
+ * the ramp (n <-> 1000-n) flips every existing zinc utility to its light-mode
+ * counterpart with no component edits. Accent colors (cyan/fuchsia/...) keep
+ * their default values so brand colors stay consistent across themes.
+ * ponytail: ramp inversion; add per-token semantic vars only if a color ever
+ * needs to differ between themes beyond a straight invert.
+ */
+html.light {
+  --background: #fafafa;
+  --foreground: #18181b;
+  --scrollbar-track: #e4e4e7;
+  --scrollbar-thumb: #d4d4d8;
+  --scrollbar-thumb-hover: #a1a1aa;
+
+  --color-zinc-950: oklch(98.5% 0 0);
+  --color-zinc-900: oklch(96.7% 0.001 286.375);
+  --color-zinc-800: oklch(92% 0.004 286.32);
+  --color-zinc-700: oklch(87.1% 0.006 286.286);
+  --color-zinc-600: oklch(70.5% 0.015 286.067);
+  --color-zinc-400: oklch(44.2% 0.017 285.786);
+  --color-zinc-300: oklch(37% 0.013 285.805);
+  --color-zinc-200: oklch(27.4% 0.006 286.033);
+  --color-zinc-100: oklch(21% 0.006 285.885);
+  --color-zinc-50: oklch(14.1% 0.005 285.823);
 }
 
 @theme inline {
@@ -30,16 +61,16 @@ html {
 }
 
 ::-webkit-scrollbar-track {
-  background: #18181b;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--scrollbar-thumb);
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Animation utilities */
