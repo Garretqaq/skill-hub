@@ -134,3 +134,41 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
   })
   return { name, type: found.kind }
 }
+
+export interface FoundRoot { root: string; kind: 'plugin' | 'skill' }
+
+/** findRoot 的「收集全部」版：命中包根即不再下钻，避免插件内嵌 skills 被重复计数 */
+export function findRoots(dir: string): FoundRoot[] {
+  const out: FoundRoot[] = []
+  const stack = [dir]
+  while (stack.length) {
+    const cur = stack.shift()!
+    if (fs.existsSync(path.join(cur, '.claude-plugin', 'plugin.json'))) {
+      out.push({ root: cur, kind: 'plugin' })
+      continue
+    }
+    if (fs.existsSync(path.join(cur, 'SKILL.md'))) {
+      out.push({ root: cur, kind: 'skill' })
+      continue
+    }
+    for (const name of fs.readdirSync(cur)) {
+      if (name === '.git') continue
+      const full = path.join(cur, name)
+      if (fs.statSync(full).isDirectory()) stack.push(full)
+    }
+  }
+  return out
+}
+
+export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; description: string; root: string }
+
+export function discoverPackages(dir: string): DiscoveredPackage[] {
+  return findRoots(dir).map(({ root, kind }) => {
+    if (kind === 'plugin') {
+      const pj = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin/plugin.json'), 'utf8'))
+      return { name: toKebab(pj.name || path.basename(root)), kind, description: pj.description || '', root }
+    }
+    const fm = matter(fs.readFileSync(path.join(root, 'SKILL.md'), 'utf8')).data
+    return { name: toKebab(fm.name || path.basename(root)), kind, description: fm.description || '', root }
+  })
+}
