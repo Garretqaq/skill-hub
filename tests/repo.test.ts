@@ -79,6 +79,20 @@ test('syncFromRemoteIn force-overwrites local from unrelated remote', () => {
   expect(fs.existsSync(path.join(local, 'local-only.txt'))).toBe(false) // 本地被远程覆盖
 })
 
+test('syncFromRemoteIn removes untracked local files (clean -fd)', () => {
+  const remote = bareRemoteWithCommit()
+  const local = gitRepo()
+  fs.writeFileSync(path.join(local, 'local-committed.txt'), 'committed')
+  commitAllIn(local, 'local init')
+  // 写一个未追踪文件（不提交）
+  fs.writeFileSync(path.join(local, 'untracked-leftover.txt'), 'leftover')
+
+  syncFromRemoteIn(local, remote)
+
+  expect(fs.existsSync(path.join(local, 'untracked-leftover.txt'))).toBe(false) // 未追踪文件被清除
+  expect(fs.readFileSync(path.join(local, 'remote-skill.txt'), 'utf8')).toBe('from-remote')
+})
+
 test('syncFromRemoteIn is a safe no-op against an empty remote', () => {
   const emptyBare = fs.mkdtempSync(path.join(os.tmpdir(), 'shbareempty-')) + '.git'
   execFileSync('git', ['init', '-q', '--bare', emptyBare])

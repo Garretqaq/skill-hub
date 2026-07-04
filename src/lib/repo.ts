@@ -75,6 +75,7 @@ export function syncFromRemoteIn(dir: string, url: string): void {
   if (!heads) return                                        // 远程无分支/提交，跳过
   git(dir, ['fetch', 'origin'])
   git(dir, ['reset', '--hard', 'FETCH_HEAD'])               // fetch origin 后 FETCH_HEAD 指向远程默认分支
+  git(dir, ['clean', '-fd'])                                // 删除未追踪文件，使强制覆盖完整
 }
 export function syncFromRemote(): void {
   ensureRepo()                                              // .git 缺失时 clone（clone 即已同步）
