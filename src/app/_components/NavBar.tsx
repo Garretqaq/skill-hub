@@ -53,6 +53,17 @@ export default function NavBar({ user }: NavBarProps) {
                     <span className="text-sm text-zinc-400">{user.username}</span>
                   </div>
 
+                  {/* Console Link */}
+                  <a
+                    href="/admin"
+                    className="flex items-center gap-2 px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 transition-colors font-medium"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v2H4V6zM4 10h16v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8zM7 14h.01M7 17h.01M11 14h6" />
+                    </svg>
+                    <span className="hidden sm:inline">控制台</span>
+                  </a>
+
                   {/* Upload Button */}
                   <button
                     onClick={() => setShowUpload(true)}

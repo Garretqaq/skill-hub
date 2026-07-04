@@ -4,7 +4,8 @@
  */
 import { notFound } from 'next/navigation'
 import { getPluginDetail } from '@/lib/marketplace'
-import { REPO_DIR, MARKETPLACE_NAME, MARKETPLACE_REPO_URL, stripCreds } from '@/lib/config'
+import { REPO_DIR } from '@/lib/config'
+import { getSettings, getMarketName } from '@/lib/settings'
 import { getUser } from '@/lib/auth'
 import InstallCommands from '@/app/_components/InstallCommands'
 import DeleteButton from '@/app/_components/DeleteButton'
@@ -31,7 +32,7 @@ export default async function SkillDetailPage({ params }: PageProps) {
   }
 
   const user = await getUser()
-  const publicRepoUrl = stripCreds(MARKETPLACE_REPO_URL)
+  const publicRepoUrl = getSettings().repoUrl // 设置里配置的仓库地址（已脱敏）
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
@@ -94,12 +95,22 @@ export default async function SkillDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Column - Main Content */}
-            <div className="lg:col-span-2 space-y-8">
-              {/* Markdown Documentation */}
-              {detail.skillMarkdown && (
+          {/* Main Content - single column, 安装命令 on top */}
+          <div className="min-w-0 space-y-8">
+            {/* Install Commands */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-fuchsia-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="relative p-6 bg-zinc-900/40 border border-zinc-800 rounded-2xl backdrop-blur-sm">
+                <InstallCommands
+                  market={getMarketName()}
+                  repoUrl={publicRepoUrl}
+                  name={name}
+                />
+              </div>
+            </div>
+
+            {/* Markdown Documentation */}
+            {detail.skillMarkdown && (
                 <div className="relative group">
                   <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-fuchsia-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                   <div className="relative p-8 bg-zinc-900/40 border border-zinc-800 rounded-2xl backdrop-blur-sm">
@@ -109,7 +120,7 @@ export default async function SkillDetailPage({ params }: PageProps) {
                       </svg>
                       技能说明
                     </h2>
-                    <div className="prose prose-invert prose-zinc max-w-none prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-a:text-cyan-400 prose-strong:text-zinc-200 prose-code:text-cyan-400 prose-code:bg-zinc-800/50 prose-code:px-2 prose-code:py-1 prose-code:rounded prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800">
+                    <div className="prose prose-invert prose-zinc max-w-none break-words prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-a:text-cyan-400 prose-strong:text-zinc-200 prose-code:text-cyan-400 prose-code:bg-zinc-800/50 prose-code:px-2 prose-code:py-1 prose-code:rounded prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800 prose-pre:overflow-x-auto">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {detail.skillMarkdown}
                       </ReactMarkdown>
@@ -153,25 +164,9 @@ export default async function SkillDetailPage({ params }: PageProps) {
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Right Column - Sidebar */}
-            <div className="space-y-8">
-              {/* Install Commands */}
-              <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-fuchsia-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="relative p-6 bg-zinc-900/40 border border-zinc-800 rounded-2xl backdrop-blur-sm">
-                  <InstallCommands
-                    market={MARKETPLACE_NAME}
-                    repoUrl={publicRepoUrl}
-                    name={name}
-                  />
-                </div>
-              </div>
-
-              {/* Delete Button (if logged in) */}
-              {user && <DeleteButton name={name} />}
-            </div>
+            {/* Delete Button (if logged in) */}
+            {user && <DeleteButton name={name} />}
           </div>
         </div>
       </div>

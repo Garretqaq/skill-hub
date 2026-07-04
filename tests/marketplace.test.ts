@@ -14,7 +14,7 @@ test('reads marketplace name and plugins', () => {
 test('detail returns SKILL.md body and file list', () => {
   const d = getPluginDetail(REPO, 'hello-skill')!
   expect(d.entry.name).toBe('hello-skill')
-  expect(d.skillMarkdown).toContain('Hello body.')
+  expect(d.skillMarkdown).toBe('Hello body.') // 已剥离 YAML frontmatter，只剩正文
   expect(d.files).toContain('skills/hello/SKILL.md')
 })
 

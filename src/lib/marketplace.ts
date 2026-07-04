@@ -1,6 +1,7 @@
 /** @author sgz @since 2026-07-03 */
 import fs from 'node:fs'
 import path from 'node:path'
+import matter from 'gray-matter'
 
 export interface PluginEntry {
   name: string
@@ -35,6 +36,14 @@ export function listPlugins(repoDir: string): PluginEntry[] {
   return readMarketplace(repoDir).plugins
 }
 
+export function writeMarketName(repoDir: string, name: string): void {
+  const p = manifestPath(repoDir)
+  const m = readMarketplace(repoDir)
+  m.name = name
+  fs.mkdirSync(path.dirname(p), { recursive: true })
+  fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
+}
+
 function walk(dir: string, base: string, out: string[]): void {
   for (const name of fs.readdirSync(dir).sort()) {
     if (name === '.git') continue
@@ -54,7 +63,7 @@ export function getPluginDetail(repoDir: string, name: string): PluginDetail | n
   walk(pluginDir, pluginDir, files)
   const skillRel = files.find(f => /^skills\/[^/]+\/SKILL\.md$/.test(f))
   const skillMarkdown = skillRel
-    ? fs.readFileSync(path.join(pluginDir, skillRel), 'utf8')
+    ? matter(fs.readFileSync(path.join(pluginDir, skillRel), 'utf8')).content.trim() // 剥掉 YAML frontmatter，只展示正文
     : null
   return { entry, skillMarkdown, files }
 }

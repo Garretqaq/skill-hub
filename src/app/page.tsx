@@ -3,16 +3,22 @@
  * @since 2026-07-03
  */
 import { listPlugins } from '@/lib/marketplace'
-import { REPO_DIR, MARKETPLACE_NAME } from '@/lib/config'
+import { REPO_DIR } from '@/lib/config'
+import { getMarketName } from '@/lib/settings'
 import SkillGrid from './_components/SkillGrid'
 
-export const metadata = {
-  title: `${MARKETPLACE_NAME} - Skill Hub`,
-  description: '浏览和安装 Claude 技能插件'
+export const dynamic = 'force-dynamic'
+
+export function generateMetadata() {
+  return {
+    title: `${getMarketName()} - Skill Hub`,
+    description: '浏览和安装 Claude 技能插件'
+  }
 }
 
 export default function HomePage() {
   const plugins = listPlugins(REPO_DIR)
+  const marketName = getMarketName()
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
@@ -31,7 +37,7 @@ export default function HomePage() {
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
               </svg>
-              {MARKETPLACE_NAME}
+              {marketName}
             </div>
 
             <h1 className="text-5xl md:text-6xl font-bold text-zinc-100 leading-tight">

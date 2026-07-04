@@ -59,6 +59,22 @@ test('duplicate name throws', () => {
   expect(() => ingest(repo, src)).toThrow(/name exists/)
 })
 
+test('overwrite replaces existing plugin instead of throwing', () => {
+  const repo = seedRepo()
+  const mk = (body: string) => {
+    const src = tmp()
+    const sk = path.join(src, 'dup')
+    fs.mkdirSync(sk, { recursive: true })
+    fs.writeFileSync(path.join(sk, 'SKILL.md'), `---\nname: dup\ndescription: d\n---\n${body}`)
+    return src
+  }
+  ingest(repo, mk('v1'))
+  ingest(repo, mk('v2'), { overwrite: true }) // 不抛错，覆盖
+  const skill = fs.readFileSync(path.join(repo, 'plugins/dup/skills/dup/SKILL.md'), 'utf8')
+  expect(skill).toContain('v2')
+  expect(readMarketplace(repo).plugins.filter(p => p.name === 'dup')).toHaveLength(1) // 不重复
+})
+
 test('unrecognized package throws', () => {
   const repo = seedRepo()
   const src = tmp()

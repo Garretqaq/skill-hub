@@ -18,12 +18,12 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
   const commands = [
     {
       label: '添加市场',
-      cmd: `npx skills add-market ${market} ${repoUrl}`,
+      cmd: `claude plugin marketplace add ${repoUrl}`,
       id: 'add-market'
     },
     {
       label: '安装技能',
-      cmd: `npx skills install ${name} -g`,
+      cmd: `claude plugin install ${name}@${market}`,
       id: 'install'
     }
   ]
@@ -95,7 +95,7 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div className="text-sm text-zinc-400 leading-relaxed">
-          首次使用需要先添加市场源，然后再安装具体技能。使用 <code className="px-2 py-0.5 bg-zinc-900/50 rounded text-cyan-400 font-mono text-xs">-g</code> 参数全局安装。
+          在 Claude Code 中先添加市场源（仓库地址），再安装具体技能。
         </div>
       </div>
     </div>

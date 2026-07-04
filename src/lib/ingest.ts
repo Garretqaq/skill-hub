@@ -44,7 +44,7 @@ function writeManifestEntry(repoDir: string, entry: PluginEntry): void {
   fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
 }
 
-export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string }): IngestResult {
+export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean }): IngestResult {
   const found = findRoot(extractedDir)
   if (!found) throw new Error('unrecognized package: no plugin.json or SKILL.md')
 
@@ -66,7 +66,10 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
   if (!name) throw new Error('unrecognized package: empty name')
 
   const dest = path.join(repoDir, 'plugins', name)
-  if (fs.existsSync(dest)) throw new Error(`name exists: ${name}`)
+  if (fs.existsSync(dest)) {
+    if (!opts?.overwrite) throw new Error(`name exists: ${name}`)
+    fs.rmSync(dest, { recursive: true, force: true }) // 覆盖：先删旧目录，manifest 条目由下方替换
+  }
 
   if (found.kind === 'plugin') {
     copyDir(found.root, dest)

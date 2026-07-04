@@ -23,7 +23,7 @@ export default function LoginPage() {
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ user: username, pass: password })
       })
 
       if (res.status === 401) {
@@ -44,7 +44,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/')
+      router.push('/admin')
       router.refresh()
     } catch (err) {
       setError('网络错误，请检查连接')
