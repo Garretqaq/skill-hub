@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# runtime data (contains secrets: repo token, cloned marketplace repo)
+/data
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
