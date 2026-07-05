@@ -1,7 +1,7 @@
 /** @author sgz @since 2026-07-03 */
 import { NextRequest, NextResponse } from 'next/server'
 import { checkCredentials, signToken, isLocked, recordFailure, clearFailures } from '@/lib/auth'
-import { AUTH_SECRET } from '@/lib/config'
+import { getAuthSecret } from '@/lib/settings'
 import { COOKIE } from '@/lib/session'
 
 export async function POST(req: NextRequest) {
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   }
   clearFailures(ip)
   const res = NextResponse.json({ ok: true })
-  res.cookies.set(COOKIE, signToken(user, AUTH_SECRET), {
+  res.cookies.set(COOKIE, signToken(user, getAuthSecret()), {
     httpOnly: true, sameSite: 'lax', path: '/', maxAge: 7 * 24 * 3600,
   })
   return res

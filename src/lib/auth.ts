@@ -68,10 +68,10 @@ export function clearFailures(ip: string): void {
 
 export async function getUser(): Promise<{ username: string } | null> {
   const { cookies } = await import('next/headers')
-  const { AUTH_SECRET } = await import('./config')
+  const { getAuthSecret } = await import('./settings')
   const token = (await cookies()).get('sh_session')?.value // 与登录接口写入的 COOKIE 名一致
   if (!token) return null
-  const payload = verifyToken(token, AUTH_SECRET)
+  const payload = verifyToken(token, getAuthSecret())
   if (!payload) return null
   return { username: payload.user }
 }

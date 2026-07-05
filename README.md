@@ -54,7 +54,7 @@ Skill Hub 把这段体验补齐：一个页面浏览所有技能、点进去读�
 ### 本地运行
 
 ```bash
-cp .env.example .env      # 填好 ADMIN_PASSWORD、AUTH_SECRET、MARKETPLACE_REPO_URL
+cp .env.example .env      # 填好 ADMIN_PASSWORD、MARKETPLACE_REPO_URL
 npm install
 npm run dev               # http://localhost:3000
 ```
@@ -83,7 +83,7 @@ services:
     environment:
       ADMIN_USER: admin
       ADMIN_PASSWORD: change-me
-      AUTH_SECRET: long-random-string
+      # AUTH_SECRET 可不配，首次启动自动生成并存入挂载卷 /data/settings.json
     volumes:
       # 运行时数据（marketplace 克隆、被监听仓库、访问 token），务必持久化
       - ./data:/data
@@ -111,7 +111,7 @@ docker compose down       # 停止并移除容器（./data 保留）
 |----------|------|
 | `ADMIN_USER` | 管理员用户名 |
 | `ADMIN_PASSWORD` | 管理员密码 |
-| `AUTH_SECRET` | 会话签名密钥，填一段长随机串 |
+| `AUTH_SECRET` | 会话签名密钥，**可不配**：首次启动自动生成随机值并存入 `data/settings.json`；仅在需要多实例共享同一密钥时才显式设置 |
 | `MARKETPLACE_REPO_URL` | 市场 git 仓库地址（含 token 的写权限地址） |
 | `MARKETPLACE_NAME` | 市场名称，用于安装命令 `install <name>@<市场名>` |
 

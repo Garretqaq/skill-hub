@@ -1,12 +1,14 @@
 /** @author sgz @since 2026-07-03 */
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { MARKETPLACE_REPO_URL, MARKETPLACE_NAME, REPO_DIR, DATA_DIR, stripCreds } from './config'
 import { readMarketplace } from './marketplace'
 
 interface Settings {
-  repoUrl?: string // 不含鉴权信息的仓库地址
-  token?: string   // 单独保存的访问 token
+  repoUrl?: string     // 不含鉴权信息的仓库地址
+  token?: string       // 单独保存的访问 token
+  authSecret?: string  // 会话签名密钥，首次启动自动生成
 }
 
 function settingsFile(): string {
@@ -49,6 +51,20 @@ export function getSettings(): { repoUrl: string; hasToken: boolean; name: strin
     hasToken: !!s.token,
     name: getMarketName(),
   }
+}
+
+// 会话签名密钥：优先环境变量；否则从 settings.json 读取，没有则随机生成并持久化
+let cachedSecret: string | undefined
+export function getAuthSecret(): string {
+  if (process.env.AUTH_SECRET) return process.env.AUTH_SECRET
+  if (cachedSecret) return cachedSecret
+  const s = read()
+  if (s.authSecret) return (cachedSecret = s.authSecret)
+  const secret = crypto.randomBytes(32).toString('base64url')
+  const file = settingsFile()
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, JSON.stringify({ ...read(), authSecret: secret }, null, 2) + '\n')
+  return (cachedSecret = secret)
 }
 
 // token 留空表示保留原有，不覆盖
