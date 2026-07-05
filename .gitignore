@@ -47,3 +47,6 @@ next-env.d.ts
 /.claude
 /.agents
 /docs
+
+# skills CLI 锁文件
+/skills-lock.json
