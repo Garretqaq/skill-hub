@@ -1,5 +1,8 @@
 /** @author sgz @since 2026-07-04 */
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 import fs from 'node:fs'
 import path from 'node:path'
 import { discoverPackages } from './ingest'
@@ -75,6 +78,28 @@ export function restoreWatchedFromRepo(): void {
 // 浅克隆到目标目录（已存在先删）；url 由调用方保证已规范化
 // --recurse-submodules：市场用 submodule 引用包时（如 superpowers），拉取真实文件而非空 gitlink
 export function cloneInto(url: string, dir: string): void {
+  execFileSync('git', ['clone', '--depth=1', '--', url, dir], { stdio: 'pipe' })
+}
+
+export async function cloneIntoAsync(url: string, dir: string): Promise<void> {
+  await execFileAsync('git', ['clone', '--depth=1', '--', url, dir], { stdio: 'pipe' })
+}
+
+async function runPool<T>(tasks: (() => Promise<T>)[], concurrency: number): Promise<T[]> {
+  const results: T[] = []
+  let index = 0
+
+  async function worker(): Promise<void> {
+    while (index < tasks.length) {
+      const i = index++
+      results[i] = await tasks[i]()
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, worker)
+  await Promise.all(workers)
+  return results
+}
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(path.dirname(dir), { recursive: true })
   execFileSync('git', ['clone', '--depth', '1', '--recurse-submodules', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
