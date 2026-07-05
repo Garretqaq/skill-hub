@@ -6,6 +6,7 @@ import { listPlugins } from '@/lib/marketplace'
 import { REPO_DIR } from '@/lib/config'
 import { getMarketName } from '@/lib/settings'
 import SkillGrid from './_components/SkillGrid'
+import GitHubRepoCard from './_components/GitHubRepoCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,6 +67,10 @@ export default function HomePage() {
                 <span>即装即用</span>
               </div>
             </div>
+
+
+            {/* Open-source repo */}
+            <GitHubRepoCard />
           </div>
 
           {/* Grid */}
