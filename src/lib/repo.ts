@@ -5,8 +5,15 @@ import path from 'node:path'
 import { REPO_DIR, MARKETPLACE_NAME } from './config'
 import { getRepoUrl } from './settings'
 
+// 容器内以 root 运行且无全局 git 身份，注入 committer/author 身份避免 commit 报 "Author identity unknown"
+const GIT_IDENTITY = {
+  GIT_AUTHOR_NAME: 'skill-hub', GIT_AUTHOR_EMAIL: 'skill-hub@localhost',
+  GIT_COMMITTER_NAME: 'skill-hub', GIT_COMMITTER_EMAIL: 'skill-hub@localhost',
+}
 function git(dir: string, args: string[]): string {
-  return execFileSync('git', args, { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+  return execFileSync('git', args, {
+    cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...GIT_IDENTITY },
+  }).toString()
 }
 function hasChanges(dir: string): boolean {
   return git(dir, ['status', '--porcelain']).trim().length > 0
