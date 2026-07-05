@@ -445,3 +445,27 @@ test('refreshAll 后 buildIndex 反映远程新提交（缓存失效 + 并行）
   await refreshAll()
   expect(buildIndex().map(p => p.name).sort()).toEqual(['alpha', 'beta']) // 若缓存未失效仍是 ['alpha']
 })
+
+test('groupPackagesByRepo：按 repoId 归组，保留首次出现顺序，且不聚合非相邻的同 repoId', async () => {
+  const { groupPackagesByRepo } = await import('@/lib/watched')
+  const mk = (repoId: string, name: string): any => ({
+    repoId, source: `src-${repoId}`, url: `url-${repoId}`, market: null,
+    name, kind: 'skill', description: `${name} desc`,
+  })
+  const results = [
+    mk('repoB', 'b1'),
+    mk('repoA', 'a1'),
+    mk('repoB', 'b2'),
+    mk('repoA', 'a2'),
+  ]
+  const groups = groupPackagesByRepo(results)
+  expect(groups.map(g => g.repoId)).toEqual(['repoB', 'repoA'])
+  expect(groups[0].source).toBe('src-repoB')
+  expect(groups[0].items.map((p: any) => p.name)).toEqual(['b1', 'b2'])
+  expect(groups[1].items.map((p: any) => p.name)).toEqual(['a1', 'a2'])
+})
+
+test('groupPackagesByRepo：空数组返回空分组', async () => {
+  const { groupPackagesByRepo } = await import('@/lib/watched')
+  expect(groupPackagesByRepo([])).toEqual([])
+})
