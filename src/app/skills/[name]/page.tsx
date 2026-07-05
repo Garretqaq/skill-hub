@@ -161,7 +161,16 @@ export default async function SkillDetailPage({ params }: PageProps) {
                       技能说明
                     </h2>
                     <div className="prose prose-zinc max-w-none break-words prose-a:text-cyan-400 prose-code:text-cyan-400 prose-code:bg-zinc-800/50 prose-code:px-2 prose-code:py-1 prose-code:rounded prose-pre:border prose-pre:border-zinc-700 prose-pre:overflow-x-auto">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          table: ({ children }) => (
+                            <div className="overflow-x-auto">
+                              <table>{children}</table>
+                            </div>
+                          ),
+                        }}
+                      >
                         {detail.skillMarkdown}
                       </ReactMarkdown>
                     </div>
