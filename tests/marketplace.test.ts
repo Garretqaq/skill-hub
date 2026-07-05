@@ -6,7 +6,7 @@ import path from 'node:path'
 import { expect, test } from 'vitest'
 import { readMarketplace, listPlugins, getPluginDetail, writeMarketName } from '@/lib/marketplace'
 
-interface SeedPlugin { name: string; skillBody?: string; readmeBody?: string; description?: string }
+interface SeedPlugin { name: string; skillBody?: string; readmeBody?: string; description?: string; rootReadmeBody?: string; noSkills?: boolean }
 
 // 建一个 no-checkout 仓库：init + 提交 manifest+plugins + 清空工作目录
 function seedNoCheckout(plugins: SeedPlugin[] = [], marketName = 'fx-market'): string {
@@ -21,10 +21,18 @@ function seedNoCheckout(plugins: SeedPlugin[] = [], marketName = 'fx-market'): s
   fs.writeFileSync(path.join(dir, '.claude-plugin', 'marketplace.json'),
     JSON.stringify({ name: marketName, owner: { name: 'sgz' }, plugins: entries }, null, 2))
   for (const p of plugins) {
-    const sk = path.join(dir, 'plugins', p.name, 'skills', p.name)
-    fs.mkdirSync(sk, { recursive: true })
-    fs.writeFileSync(path.join(sk, 'SKILL.md'), `---\nname: ${p.name}\n---\n${p.skillBody ?? 'body'}`)
-    if (p.readmeBody) fs.writeFileSync(path.join(sk, 'README.md'), `---\nname: ${p.name}\n---\n${p.readmeBody}`)
+    const pluginDir = path.join(dir, 'plugins', p.name)
+    if (!p.noSkills) {
+      const sk = path.join(pluginDir, 'skills', p.name)
+      fs.mkdirSync(sk, { recursive: true })
+      fs.writeFileSync(path.join(sk, 'SKILL.md'), `---\nname: ${p.name}\n---\n${p.skillBody ?? 'body'}`)
+      if (p.readmeBody) fs.writeFileSync(path.join(sk, 'README.md'), `---\nname: ${p.name}\n---\n${p.readmeBody}`)
+    }
+    // 插件型仓库：README 在插件根目录，无 skills 子目录
+    if (p.rootReadmeBody) {
+      fs.mkdirSync(pluginDir, { recursive: true })
+      fs.writeFileSync(path.join(pluginDir, 'README.md'), `---\nname: ${p.name}\n---\n${p.rootReadmeBody}`)
+    }
   }
   execFileSync('git', ['add', '-A'], { cwd: dir })
   execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: dir })
@@ -53,6 +61,18 @@ test('detail prefers README.md over SKILL.md', () => {
   const repo = seedNoCheckout([{ name: 'x', skillBody: 'skill body', readmeBody: 'readme body' }])
   const d = getPluginDetail(repo, 'x')!
   expect(d.skillMarkdown).toBe('readme body')
+})
+
+test('detail falls back to root README.md when no skills dir (plugin-type repo)', () => {
+  const repo = seedNoCheckout([{ name: 'claude-hud', noSkills: true, rootReadmeBody: 'HUD readme.' }])
+  const d = getPluginDetail(repo, 'claude-hud')!
+  expect(d.skillMarkdown).toBe('HUD readme.')
+})
+
+test('detail prefers skills doc over root README', () => {
+  const repo = seedNoCheckout([{ name: 'y', skillBody: 'skill body', rootReadmeBody: 'root readme' }])
+  const d = getPluginDetail(repo, 'y')!
+  expect(d.skillMarkdown).toBe('skill body')
 })
 
 test('detail returns null for unknown plugin', () => {

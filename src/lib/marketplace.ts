@@ -72,9 +72,13 @@ export function getPluginDetail(repoDir: string, name: string): PluginDetail | n
   const prefix = `plugins/${name}/`
   const files = tree.split('\n').map(s => s.trim()).filter(Boolean)
     .filter(f => f.startsWith(prefix)).map(f => f.slice(prefix.length))
+  // 说明文档优先级：skills 子目录（真正的技能文档）> 插件根目录（README/SKILL）。
+  // 插件型仓库（如 claude-hud）无 skills 目录、README 在根，故需回退到根目录，否则详情页无「技能说明」
   const docRel =
     files.find(f => /^skills\/[^/]+\/README\.md$/i.test(f)) ??
-    files.find(f => /^skills\/[^/]+\/SKILL\.md$/i.test(f))
+    files.find(f => /^skills\/[^/]+\/SKILL\.md$/i.test(f)) ??
+    files.find(f => /^README\.md$/i.test(f)) ??
+    files.find(f => /^SKILL\.md$/i.test(f))
   let skillMarkdown: string | null = null
   if (docRel) {
     const raw = gitShow(repoDir, `HEAD:plugins/${name}/${docRel}`)
