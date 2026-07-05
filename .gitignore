@@ -45,4 +45,5 @@ next-env.d.ts
 
 # claude & docs
 /.claude
+/.agents
 /docs

@@ -59,7 +59,44 @@ npm run dev               # http://localhost:3000
 
 ```bash
 docker build -t skill-hub .
-docker run -p 3000:3000 --env-file .env -v $(pwd)/data:/app/data skill-hub
+docker run -p 3000:3000 --env-file .env -v $(pwd)/data:/data skill-hub
+```
+
+### Docker Compose（推荐）
+
+新建 `docker-compose.yml`，环境变量直接写在 `environment:` 里：
+
+```yaml
+services:
+  skill-hub:
+    image: registry.cn-hangzhou.aliyuncs.com/dato/skill-hub:latest
+    # 想用本地源码构建而非拉镜像，注释掉上面的 image，改用：
+    # build: .
+    container_name: skill-hub
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: change-me
+      AUTH_SECRET: long-random-string
+    volumes:
+      # 运行时数据（marketplace 克隆、被监听仓库、访问 token），务必持久化
+      - ./data:/data
+```
+
+一条命令部署：
+
+```bash
+docker compose up -d      # http://localhost:3000
+```
+
+常用运维：
+
+```bash
+docker compose logs -f    # 查看日志
+docker compose pull && docker compose up -d   # 更新到最新镜像
+docker compose down       # 停止并移除容器（./data 保留）
 ```
 
 > `data/` 目录持有克隆的市场仓库和访问 token，务必挂载持久化卷，且**不要提交到版本控制**（已在 `.gitignore` 中）。
