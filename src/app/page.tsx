@@ -73,9 +73,7 @@ export default function HomePage() {
           <SkillGrid plugins={plugins} />
 
           {/* Open-source repo */}
-          <div className="mt-16 pt-8 border-t border-zinc-800/60">
-            <GitHubRepoCard />
-          </div>
+          <GitHubRepoCard />
         </div>
       </div>
     </div>

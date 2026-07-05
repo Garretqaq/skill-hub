@@ -6,32 +6,13 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import type { WatchedRepo, IndexedPackage, PackageGroup } from '@/lib/watched'
+import type { WatchedRepo, IndexedPackage } from '@/lib/watched'
+import { groupPackagesByRepo } from '@/lib/packageGroup'
 import { isValidVersion, compareVersions } from '@/lib/semver'
 import { useToast } from '@/lib/useToast'
 import Toast from './Toast'
 
 type WatchedRow = WatchedRepo & { packageCount?: number }
-
-// 注：与 src/lib/watched.ts 的 groupPackagesByRepo 逻辑一致，但在此本地重实现——
-// 该组件是 'use client'，若从 '@/lib/watched' 做值导入会把其传递依赖的
-// node:child_process / node:fs 等服务端专属模块一并打入浏览器包，
-// 导致 Turbopack dev/build 报 "chunking context does not support external modules" 而彻底崩溃。
-// 这里只做纯函数的按 repoId 归组，不依赖任何服务端能力，故本地复制以保持浏览器可打包。
-function groupPackagesByRepo(results: IndexedPackage[]): PackageGroup[] {
-  const groups: PackageGroup[] = []
-  const index = new Map<string, PackageGroup>()
-  for (const pkg of results) {
-    let group = index.get(pkg.repoId)
-    if (!group) {
-      group = { repoId: pkg.repoId, source: pkg.source, items: [] }
-      index.set(pkg.repoId, group)
-      groups.push(group)
-    }
-    group.items.push(pkg)
-  }
-  return groups
-}
 
 // 与后端 normalizeSource 对齐的前端预校验：owner/repo 简写或 http(s)/git@/ssh URL
 function validateSource(s: string): string | null {
