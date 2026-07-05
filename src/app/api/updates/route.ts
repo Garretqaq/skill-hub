@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
-import { ensureRepo, commitAll, push, headOf, resetTo } from '@/lib/repo'
+import { syncFromRemote, commitAll, push, headOf, resetTo } from '@/lib/repo'
 import { ingest, discoverPackages, toKebab } from '@/lib/ingest'
 import { normalizeSource } from '@/lib/remote'
 import { packageRoot, cloneInto, updateStatus } from '@/lib/watched'
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const item = updateStatus().find(u => u.name === String(name))
   if (!item) return NextResponse.json({ error: 'no update available' }, { status: 404 })
 
-  ensureRepo()
+  syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
   const before = headOf()
 
   // 引用型包：临时克隆源仓库

@@ -14,6 +14,7 @@ export function toKebab(s: string): string {
 function copyDir(src: string, dest: string): void {
   fs.mkdirSync(dest, { recursive: true })
   for (const name of fs.readdirSync(src)) {
+    if (name === '.git') continue // 跳过源克隆的 .git，否则目标成内嵌 git 仓库，被父仓库记成 gitlink（只见引用无文件）
     const s = path.join(src, name), d = path.join(dest, name)
     if (fs.statSync(s).isDirectory()) copyDir(s, d)
     else fs.copyFileSync(s, d)

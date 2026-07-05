@@ -5,11 +5,13 @@ import path from 'node:path'
 import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
 import { readMarketplace } from '@/lib/marketplace'
-import { commitAll, push, headOf, resetTo } from '@/lib/repo'
+import { syncFromRemote, commitAll, push, headOf, resetTo } from '@/lib/repo'
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ name: string }> }) {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const { name } = await ctx.params
+
+  syncFromRemote() // 先与远程对齐，避免 remote 领先时 push 非快进被拒；也让存在性判断基于最新状态
 
   const pluginDir = path.join(REPO_DIR, 'plugins', name)
   if (!fs.existsSync(pluginDir)) return NextResponse.json({ error: 'not found' }, { status: 404 })

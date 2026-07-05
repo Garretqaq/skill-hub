@@ -44,6 +44,33 @@ test('cloneInto 浅克隆到目标目录', async () => {
   expect(fs.existsSync(path.join(dest, 'plugins/alpha/.claude-plugin/plugin.json'))).toBe(true)
 })
 
+test('cloneInto 递归 submodule：市场以子模块引用包时拉取真实文件', async () => {
+  const { cloneInto } = await import('@/lib/watched')
+  const inner = remoteRepo('superpowers') // 被引用的真实包仓库
+  // 市场仓库：把 inner 作为 plugins/superpowers 子模块引入
+  const market = fs.mkdtempSync(path.join(os.tmpdir(), 'shmarket-'))
+  execFileSync('git', ['init', '-q'], { cwd: market })
+  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: market })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: market })
+  execFileSync('git', ['-c', 'protocol.file.allow=always', 'submodule', 'add', inner, 'plugins/superpowers'], { cwd: market })
+  execFileSync('git', ['commit', '-q', '-m', 'add submodule'], { cwd: market })
+
+  const dest = path.join(work, 'data/watched/market')
+  // file:// 子模块默认被 git 禁用；仅测试放行（真实 https 子模块不受影响）
+  process.env.GIT_CONFIG_COUNT = '1'
+  process.env.GIT_CONFIG_KEY_0 = 'protocol.file.allow'
+  process.env.GIT_CONFIG_VALUE_0 = 'always'
+  try {
+    cloneInto(market, dest)
+  } finally {
+    delete process.env.GIT_CONFIG_COUNT
+    delete process.env.GIT_CONFIG_KEY_0
+    delete process.env.GIT_CONFIG_VALUE_0
+  }
+  // gitlink 被展开成真实文件：plugins/superpowers 内应含子模块自己的 plugins/superpowers/...
+  expect(fs.existsSync(path.join(dest, 'plugins/superpowers/plugins/superpowers/.claude-plugin/plugin.json'))).toBe(true)
+})
+
 test('listWatched/removeWatched 走 data/watched.json；buildIndex+search 聚合并过滤', async () => {
   const { cloneInto, listWatched, removeWatched, buildIndex, search } = await import('@/lib/watched')
   const remote = remoteRepo('alpha')
@@ -63,6 +90,25 @@ test('listWatched/removeWatched 走 data/watched.json；buildIndex+search 聚合
   removeWatched(id)
   expect(listWatched()).toHaveLength(0)
   expect(fs.existsSync(path.join(work, 'data/watched', id))).toBe(false)
+})
+
+test('search 标注 localVersion：已导入本地市场的包带本地版本', async () => {
+  const { cloneInto, search } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha') // 远程 alpha v1.0.0
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+
+  // 未导入：localVersion 缺失
+  expect(search('alpha')[0].localVersion).toBeUndefined()
+
+  // 造一个本地市场，alpha 已导入为 v1.0.0
+  const repoDir = path.join(work, 'data/marketplace')
+  fs.mkdirSync(path.join(repoDir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(repoDir, '.claude-plugin/marketplace.json'),
+    JSON.stringify({ name: 'mine', owner: { name: 'x' }, plugins: [{ name: 'alpha', source: './plugins/alpha', version: '1.0.0' }] }))
+  expect(search('alpha')[0].localVersion).toBe('1.0.0')
 })
 
 test('refreshWatched 拉取远程新提交', async () => {

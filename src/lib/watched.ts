@@ -13,6 +13,7 @@ export interface IndexedPackage {
   name: string; kind: 'plugin' | 'skill'; description: string
   sourceUrl?: string  // 引用型包的外部 git URL（本地包为 undefined）
   version?: string    // 源包声明的版本，缺失为 undefined
+  localVersion?: string // 已导入本地市场的版本；未导入为 undefined
 }
 
 const storeFile = () => path.resolve('data/watched.json')
@@ -36,10 +37,11 @@ function writeAll(repos: WatchedRepo[]): void {
 export function listWatched(): WatchedRepo[] { return readAll() }
 
 // 浅克隆到目标目录（已存在先删）；url 由调用方保证已规范化
+// --recurse-submodules：市场用 submodule 引用包时（如 superpowers），拉取真实文件而非空 gitlink
 export function cloneInto(url: string, dir: string): void {
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(path.dirname(dir), { recursive: true })
-  execFileSync('git', ['clone', '--depth', '1', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
+  execFileSync('git', ['clone', '--depth', '1', '--recurse-submodules', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
 export function addWatched(source: string): WatchedRepo {
@@ -70,6 +72,7 @@ export function refreshWatched(id: string): void {
   try {
     execFileSync('git', ['fetch', '--depth', '1', 'origin'], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] })
     execFileSync('git', ['reset', '--hard', 'FETCH_HEAD'], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] })
+    execFileSync('git', ['submodule', 'update', '--init', '--recursive', '--depth', '1'], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] })
   } catch {
     cloneInto(repo.url, dir)
   }
@@ -114,9 +117,18 @@ export function buildIndex(): IndexedPackage[] {
   return out
 }
 
+// 本地市场已导入包的 name→version（现算 repoDir，理由同 updateStatus 注释）
+function localVersionMap(): Map<string, string> {
+  const repoDir = path.resolve(process.env.MARKETPLACE_DIR || 'data/marketplace')
+  const map = new Map<string, string>()
+  for (const p of listPlugins(repoDir)) if (p.version) map.set(p.name, p.version)
+  return map
+}
+
 export function search(q: string): IndexedPackage[] {
   const kw = q.trim().toLowerCase()
-  const all = buildIndex()
+  const local = localVersionMap()
+  const all = buildIndex().map(p => ({ ...p, localVersion: local.get(p.name) }))
   if (!kw) return all
   return all.filter(p => p.name.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw))
 }

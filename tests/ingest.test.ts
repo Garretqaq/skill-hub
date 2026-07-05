@@ -239,3 +239,20 @@ test('overwrite without displayName clears previous displayName', () => {
 
   expect(readMarketplace(repo).plugins[0].displayName).toBeUndefined()
 })
+
+test('ingest 跳过源 .git 目录，避免目标成 gitlink（只见引用无文件）', () => {
+  const repo = seedRepo()
+  const src = tmp() // 模拟克隆下来的包：含 .claude-plugin/plugin.json 与残留 .git
+  fs.mkdirSync(path.join(src, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(src, '.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'pkg', description: 'd', version: '1.0.0' }))
+  fs.mkdirSync(path.join(src, '.git'), { recursive: true })
+  fs.writeFileSync(path.join(src, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+
+  const res = ingest(repo, src)
+  expect(res).toEqual({ name: 'pkg', type: 'plugin' })
+  // 真实文件被复制
+  expect(fs.existsSync(path.join(repo, 'plugins/pkg/.claude-plugin/plugin.json'))).toBe(true)
+  // 源 .git 未被带入，否则父仓库会把 plugins/pkg 记成内嵌仓库/gitlink
+  expect(fs.existsSync(path.join(repo, 'plugins/pkg/.git'))).toBe(false)
+})

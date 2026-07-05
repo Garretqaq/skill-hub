@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import type { WatchedRepo, IndexedPackage } from '@/lib/watched'
+import { isValidVersion, compareVersions } from '@/lib/semver'
 import { useToast } from '@/lib/useToast'
 import Toast from './Toast'
 
@@ -74,8 +75,9 @@ export default function RemoteRepos() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: pkg.repoId, name: pkg.name, sourceUrl: pkg.sourceUrl /* 引用型包会有 sourceUrl，本地包为 undefined（API 会忽略） */ }),
       })
-      if (!res.ok) { error(`导入失败: ${await res.text()}`); return }
-      success(`已导入 ${pkg.name} 到本市场`)
+      if (!res.ok) { error(`${pkg.localVersion ? '更新' : '导入'}失败: ${await res.text()}`); return }
+      success(`已${pkg.localVersion ? '更新' : '导入'} ${pkg.name}${pkg.localVersion ? '' : ' 到本市场'}`)
+      await load(q) // 刷新 localVersion，按钮切到「更新」/置灰
     } finally { setBusy(null) }
   }
 
@@ -162,6 +164,11 @@ export default function RemoteRepos() {
           ) : (
             results.map((pkg) => {
               const isReference = !!pkg.sourceUrl // 引用型包判定
+              const imported = pkg.localVersion != null // 已导入本地市场
+              const busyKey = busy === `import:${pkg.repoId}:${pkg.name}`
+              // 有更新：远程与本地版本均合法且远程更高
+              const hasUpdate = imported && !!pkg.version && isValidVersion(pkg.version)
+                && isValidVersion(pkg.localVersion!) && compareVersions(pkg.version, pkg.localVersion!) > 0
               return (
                 <div key={`${pkg.repoId}:${pkg.name}`} className="p-4 space-y-2">
                   <div className="flex items-center gap-3">
@@ -170,14 +177,25 @@ export default function RemoteRepos() {
                     </span>
                     <span className="text-lg font-semibold text-zinc-100 truncate">{pkg.name}</span>
                     <span className="text-xs text-zinc-500 truncate">{pkg.source}</span>
-                    <button
-                      onClick={() => doImport(pkg)}
-                      disabled={busy === `import:${pkg.repoId}:${pkg.name}`}
-                      title={isReference ? '将自动从远程克隆导入' : ''}
-                      className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {busy === `import:${pkg.repoId}:${pkg.name}` ? '导入中' : '导入本市场'}
-                    </button>
+                    {imported ? (
+                      <button
+                        onClick={() => doImport(pkg)}
+                        disabled={busyKey || !hasUpdate}
+                        title={hasUpdate ? `更新到 ${pkg.version}` : `已是最新版本 ${pkg.localVersion}`}
+                        className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {busyKey ? '更新中' : '更新'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => doImport(pkg)}
+                        disabled={busyKey}
+                        title={isReference ? '将自动从远程克隆导入' : ''}
+                        className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {busyKey ? '导入中' : '导入本市场'}
+                      </button>
+                    )}
                   </div>
                   <p className="text-sm text-zinc-500 truncate">{pkg.description || '暂无描述'}</p>
                   {/* 外部安装命令 */}

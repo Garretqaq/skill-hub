@@ -6,7 +6,7 @@ import path from 'node:path'
 import AdmZip from 'adm-zip'
 import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
-import { ensureRepo, commitAll, push, headOf, resetTo } from '@/lib/repo'
+import { syncFromRemote, commitAll, push, headOf, resetTo } from '@/lib/repo'
 import { ingest } from '@/lib/ingest'
 
 export async function POST(req: NextRequest) {
@@ -25,8 +25,8 @@ export async function POST(req: NextRequest) {
   try {
     const buf = Buffer.from(await file.arrayBuffer())
     new AdmZip(buf).extractAllTo(tmp, true)
-    ensureRepo()
-    const before = headOf() // ensureRepo 保证有基础提交，push 失败时回滚到此
+    syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
+    const before = headOf() // 保证有基础提交，push 失败时回滚到此
     const res = ingest(REPO_DIR, tmp, {
       name: nameOverride ? String(nameOverride) : undefined,
       overwrite,
