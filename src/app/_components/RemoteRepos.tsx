@@ -6,12 +6,32 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import type { WatchedRepo, IndexedPackage } from '@/lib/watched'
+import type { WatchedRepo, IndexedPackage, PackageGroup } from '@/lib/watched'
 import { isValidVersion, compareVersions } from '@/lib/semver'
 import { useToast } from '@/lib/useToast'
 import Toast from './Toast'
 
 type WatchedRow = WatchedRepo & { packageCount?: number }
+
+// 注：与 src/lib/watched.ts 的 groupPackagesByRepo 逻辑一致，但在此本地重实现——
+// 该组件是 'use client'，若从 '@/lib/watched' 做值导入会把其传递依赖的
+// node:child_process / node:fs 等服务端专属模块一并打入浏览器包，
+// 导致 Turbopack dev/build 报 "chunking context does not support external modules" 而彻底崩溃。
+// 这里只做纯函数的按 repoId 归组，不依赖任何服务端能力，故本地复制以保持浏览器可打包。
+function groupPackagesByRepo(results: IndexedPackage[]): PackageGroup[] {
+  const groups: PackageGroup[] = []
+  const index = new Map<string, PackageGroup>()
+  for (const pkg of results) {
+    let group = index.get(pkg.repoId)
+    if (!group) {
+      group = { repoId: pkg.repoId, source: pkg.source, items: [] }
+      index.set(pkg.repoId, group)
+      groups.push(group)
+    }
+    group.items.push(pkg)
+  }
+  return groups
+}
 
 // 与后端 normalizeSource 对齐的前端预校验：owner/repo 简写或 http(s)/git@/ssh URL
 function validateSource(s: string): string | null {
@@ -40,10 +60,23 @@ export default function RemoteRepos() {
   const [source, setSource] = useState('')
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState<string | null>(null) // 当前进行中的动作标识
+  const [expanded, setExpanded] = useState<Set<string>>(new Set()) // 用户手动展开的组（repoId）
   const { toasts, hideToast, success, error, info } = useToast()
 
   // 输入非空时即时校验，给出格式提示
   const sourceError = useMemo(() => (source.trim() ? validateSource(source) : null), [source])
+
+  const groups = useMemo(() => groupPackagesByRepo(results), [results])
+  const hasQuery = q.trim() !== ''
+
+  const toggleGroup = (repoId: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(repoId)) next.delete(repoId)
+      else next.add(repoId)
+      return next
+    })
+  }
 
   // 拉取监听列表 + 搜索结果
   const load = useCallback(async (query: string) => {
@@ -209,59 +242,86 @@ export default function RemoteRepos() {
           placeholder="搜索所有监听仓库里的技能…"
           className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50"
         />
-        <div className="divide-y divide-zinc-800 border border-zinc-800 rounded-xl overflow-hidden bg-zinc-900/40">
-          {results.length === 0 ? (
-            <p className="p-4 text-zinc-600 text-sm">无结果。</p>
-          ) : (
-            results.map((pkg) => {
-              const isReference = !!pkg.sourceUrl // 引用型包判定
-              const imported = pkg.localVersion != null // 已导入本地市场
-              const busyKey = busy === `import:${pkg.repoId}:${pkg.name}`
-              // 有更新：远程与本地版本均合法且远程更高
-              const hasUpdate = imported && !!pkg.version && isValidVersion(pkg.version)
-                && isValidVersion(pkg.localVersion!) && compareVersions(pkg.version, pkg.localVersion!) > 0
+        {groups.length === 0 ? (
+          <p className="p-4 text-zinc-600 text-sm border border-zinc-800 rounded-xl bg-zinc-900/40">无结果。</p>
+        ) : (
+          <div className="space-y-3">
+            {groups.map((group) => {
+              const isOpen = hasQuery || expanded.has(group.repoId)
               return (
-                <div key={`${pkg.repoId}:${pkg.name}`} className="p-4 space-y-2">
-                  <div className="flex items-center gap-3">
-                    <span className="px-2 py-0.5 text-xs font-medium bg-zinc-800/50 text-zinc-400 rounded border border-zinc-700/50">
-                      {pkg.kind}{isReference ? ' (引用)' : ''}
+                <div key={group.repoId} className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-900/40">
+                  <button
+                    onClick={() => toggleGroup(group.repoId)}
+                    className="w-full flex items-center gap-3 p-4 text-left hover:bg-zinc-800/30 transition-colors"
+                  >
+                    <span className="px-2 py-0.5 text-xs font-medium bg-zinc-800/60 text-zinc-400 rounded border border-zinc-700/50 flex-shrink-0">
+                      {sourceLabel(group.source)}
                     </span>
-                    <span className="text-lg font-semibold text-zinc-100 truncate">{pkg.name}</span>
-                    <span className="text-xs text-zinc-500 truncate">{pkg.source}</span>
-                    {imported ? (
-                      <button
-                        onClick={() => doImport(pkg)}
-                        disabled={busyKey || !hasUpdate}
-                        title={hasUpdate ? `更新到 ${pkg.version}` : `已是最新版本 ${pkg.localVersion}`}
-                        className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {busyKey ? '更新中' : '更新'}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => doImport(pkg)}
-                        disabled={busyKey}
-                        title={isReference ? '将自动从远程克隆导入' : ''}
-                        className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {busyKey ? '导入中' : '导入本市场'}
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-sm text-zinc-500 truncate">{pkg.description || '暂无描述'}</p>
-                  {/* 外部安装命令 */}
-                  <details className="text-sm">
-                    <summary className="cursor-pointer text-zinc-400 hover:text-cyan-400">外部安装命令</summary>
-                    <div className="mt-2 space-y-1 font-mono text-xs text-zinc-300">
-                      <div>$ claude plugin marketplace add {pkg.url}</div>
-                      <div>$ claude plugin install {pkg.name}{pkg.market ? `@${pkg.market}` : ''}</div>
+                    <span className="font-mono text-sm text-zinc-300 truncate">{group.source}</span>
+                    <span className="ml-auto text-xs text-zinc-500 flex-shrink-0">{group.items.length} 个技能</span>
+                    <svg
+                      className={`w-4 h-4 text-zinc-500 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isOpen && (
+                    <div className="divide-y divide-zinc-800 border-t border-zinc-800">
+                      {group.items.map((pkg) => {
+                        const isReference = !!pkg.sourceUrl // 引用型包判定
+                        const imported = pkg.localVersion != null // 已导入本地市场
+                        const busyKey = busy === `import:${pkg.repoId}:${pkg.name}`
+                        // 有更新：远程与本地版本均合法且远程更高
+                        const hasUpdate = imported && !!pkg.version && isValidVersion(pkg.version)
+                          && isValidVersion(pkg.localVersion!) && compareVersions(pkg.version, pkg.localVersion!) > 0
+                        return (
+                          <div key={`${pkg.repoId}:${pkg.name}`} className="p-4 space-y-2">
+                            <div className="flex items-center gap-3">
+                              <span className="px-2 py-0.5 text-xs font-medium bg-zinc-800/50 text-zinc-400 rounded border border-zinc-700/50">
+                                {pkg.kind}{isReference ? ' (引用)' : ''}
+                              </span>
+                              <span className="text-lg font-semibold text-zinc-100 truncate">{pkg.name}</span>
+                              <span className="text-xs text-zinc-500 truncate">{pkg.source}</span>
+                              {imported ? (
+                                <button
+                                  onClick={() => doImport(pkg)}
+                                  disabled={busyKey || !hasUpdate}
+                                  title={hasUpdate ? `更新到 ${pkg.version}` : `已是最新版本 ${pkg.localVersion}`}
+                                  className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {busyKey ? '更新中' : '更新'}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => doImport(pkg)}
+                                  disabled={busyKey}
+                                  title={isReference ? '将自动从远程克隆导入' : ''}
+                                  className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {busyKey ? '导入中' : '导入本市场'}
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-sm text-zinc-500 truncate">{pkg.description || '暂无描述'}</p>
+                            {/* 外部安装命令 */}
+                            <details className="text-sm">
+                              <summary className="cursor-pointer text-zinc-400 hover:text-cyan-400">外部安装命令</summary>
+                              <div className="mt-2 space-y-1 font-mono text-xs text-zinc-300">
+                                <div>$ claude plugin marketplace add {pkg.url}</div>
+                                <div>$ claude plugin install {pkg.name}{pkg.market ? `@${pkg.market}` : ''}</div>
+                              </div>
+                            </details>
+                          </div>
+                        )
+                      })}
                     </div>
-                  </details>
+                  )}
                 </div>
               )
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
       </div>
 
       {/* Toast 通知 */}
