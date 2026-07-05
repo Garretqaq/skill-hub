@@ -36,8 +36,10 @@ test('withWorkTree commits changes via temp work-tree, leaves repo work dir empt
 
 test('withWorkTree cleans up temp dir even on error', () => {
   const repo = noCheckoutRepo()
+  const beforeCount = fs.readdirSync(os.tmpdir()).filter(n => n.startsWith('sh-wt-')).length
   expect(() => withWorkTree(repo, () => { throw new Error('boom') }, 'x')).toThrow('boom')
-  expect(fs.existsSync(path.join(repo, 'a.txt'))).toBe(false) // 仓库工作目录仍空
+  const afterCount = fs.readdirSync(os.tmpdir()).filter(n => n.startsWith('sh-wt-')).length
+  expect(afterCount).toBe(beforeCount) // 临时目录已清理
 })
 
 test('withWorkTree can modify existing file and commit', () => {
