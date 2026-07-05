@@ -41,6 +41,10 @@ Skill Hub 把这段体验补齐：一个页面浏览所有技能、点进去读�
 - 🔔 **远程仓库监听** — 关注上游 skill 仓库，检测版本更新并可一键导入。
 - 🗄️ **零数据库** — git 仓库是唯一事实来源；鉴权用 Node `crypto` 手做，不引 auth 库。
 
+## 🖼️ 界面预览
+
+<img src="assets/screenshot-home.webp" alt="Skill Hub 首页 — 技能市场浏览、搜索与安装" width="100%">
+
 ## ⚙️ 工作方式
 
 首次启动时从 `MARKETPLACE_REPO_URL` clone 一份工作副本到 `./data/marketplace/`（空仓库则初始化骨架）。上传的技能解压后按官方 schema 写入 `plugins/<name>/skills/<skill>/`，更新 `marketplace.json`，然后 commit 并 push 回远程。浏览页从这份本地副本实时读取，因此列表始终等于仓库真实内容。
