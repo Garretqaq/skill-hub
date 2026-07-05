@@ -62,16 +62,17 @@ export function commitWatchedToRepo(): void {
   }, `update watched list (${repos.length})`)
 }
 
-// 容器重建后本地 watched.json 缺失时，从市场仓库 HEAD 恢复列表并重建缓存克隆
-export function restoreWatchedFromRepo(): void {
+// 容器重建后本地 watched.json 缺失时，从市场仓库 HEAD 恢复列表并重建缓存克隆（并行，上限 6）
+export async function restoreWatchedFromRepo(): Promise<void> {
   if (fs.existsSync(storeFile())) return          // 本地已有，不覆盖
   const fromRepo = readWatchedFromRepo()
   if (!fromRepo || fromRepo.length === 0) return  // 仓库无记录，无需恢复
   writeAll(fromRepo)
-  for (const r of fromRepo) {
-    try { if (!fs.existsSync(cacheDir(r.id))) cloneInto(r.url, cacheDir(r.id)) }
-    catch { /* 单个克隆失败不阻断其余恢复 */ }
-  }
+  const missing = fromRepo.filter(r => !fs.existsSync(cacheDir(r.id)))
+  // ponytail: runPool 用 Promise.all，单个克隆失败会终止其余；外层 try-catch 兜底保证"不阻断"语义
+  await runPool(missing.map(r => async () => {
+    try { await cloneIntoAsync(r.url, cacheDir(r.id)) } catch { /* 单个克隆失败不阻断其余恢复 */ }
+  }), 6)
   invalidateIndex()
 }
 

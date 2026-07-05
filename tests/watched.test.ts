@@ -396,7 +396,7 @@ test('commitWatchedToRepo + restoreWatchedFromRepo：列表随市场仓库持久
   // 模拟容器重建：删本地列表与缓存，restore 应从仓库恢复并重建缓存克隆
   fs.rmSync(path.join(work, 'data/watched.json'))
   fs.rmSync(path.join(work, 'data/watched', id), { recursive: true, force: true })
-  restoreWatchedFromRepo()
+  await restoreWatchedFromRepo()
   expect(listWatched().map(r => r.id)).toEqual([id])
   expect(fs.existsSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'))).toBe(true)
 })
@@ -408,7 +408,7 @@ test('restoreWatchedFromRepo：本地已有列表时不覆盖', async () => {
   // 本地已有一条监听
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id: 'keep', source: 'a/b', url: 'https://x/a/b.git', addedAt: 'x' }] }))
-  restoreWatchedFromRepo()
+  await restoreWatchedFromRepo()
   expect(listWatched().map(r => r.id)).toEqual(['keep']) // 未被仓库空列表覆盖
 })
 

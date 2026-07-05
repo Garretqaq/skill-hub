@@ -26,7 +26,7 @@ function syncWatched(): string | null {
 export async function GET(req: NextRequest) {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   ensureRepo()
-  restoreWatchedFromRepo() // 容器重建后本地列表缺失则从仓库恢复
+  await restoreWatchedFromRepo() // 容器重建后本地列表缺失则从仓库恢复
   const q = new URL(req.url).searchParams.get('q') ?? ''
   // 每个监听库发现的包数量（未过滤，用于列表展示）
   const counts = new Map<string, number>()
