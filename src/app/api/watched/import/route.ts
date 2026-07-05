@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
-import { syncFromRemote, commitAll, push, headOf, resetTo } from '@/lib/repo'
+import { syncFromRemote, push, headOf, resetTo } from '@/lib/repo'
 import { ingest, discoverPackages, toKebab } from '@/lib/ingest'
 import { normalizeSource } from '@/lib/remote'
 import { packageRoot, cloneInto } from '@/lib/watched'
@@ -37,7 +37,6 @@ export async function POST(req: NextRequest) {
       syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
       const before = headOf()
       const res = ingest(REPO_DIR, pkg.root, { overwrite: true })
-      commitAll(`add ${res.name} (from remote ${sourceUrl})`)
       try {
         push()
       } catch (e) {
@@ -65,7 +64,6 @@ export async function POST(req: NextRequest) {
   const before = headOf()
   try {
     const res = ingest(REPO_DIR, root, { overwrite: true })
-    commitAll(`add ${res.name} (from ${id})`)
     try {
       push()
     } catch (e) {

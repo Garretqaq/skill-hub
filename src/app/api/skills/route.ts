@@ -6,7 +6,7 @@ import path from 'node:path'
 import AdmZip from 'adm-zip'
 import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
-import { syncFromRemote, commitAll, push, headOf, resetTo } from '@/lib/repo'
+import { syncFromRemote, push, headOf, resetTo } from '@/lib/repo'
 import { ingest } from '@/lib/ingest'
 
 export async function POST(req: NextRequest) {
@@ -34,7 +34,6 @@ export async function POST(req: NextRequest) {
       description: description ? String(description) : undefined,
       displayName: displayName ? String(displayName).trim() : undefined,
     })
-    commitAll(`${overwrite ? 'update' : 'add'} ${res.name}`)
     try {
       push()
     } catch (e) {

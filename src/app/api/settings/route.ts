@@ -4,7 +4,7 @@ import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
 import { getSettings, saveSettings, getRepoUrl, getMarketName } from '@/lib/settings'
 import { writeMarketName } from '@/lib/marketplace'
-import { setRemoteUrl, ensureRepo, commitAll, push, headOf, resetTo, syncFromRemote } from '@/lib/repo'
+import { setRemoteUrl, ensureRepo, push, headOf, resetTo, syncFromRemote } from '@/lib/repo'
 
 export async function GET() {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
@@ -36,7 +36,6 @@ export async function PUT(req: NextRequest) {
     ensureRepo()
     const before = headOf()
     writeMarketName(REPO_DIR, newName)
-    commitAll(`rename marketplace to ${newName}`)
     try {
       push()
     } catch (e) {

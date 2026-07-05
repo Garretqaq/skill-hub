@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
-import { syncFromRemote, commitAll, push, headOf, resetTo } from '@/lib/repo'
+import { syncFromRemote, push, headOf, resetTo } from '@/lib/repo'
 import { ingest, discoverPackages, toKebab } from '@/lib/ingest'
 import { normalizeSource } from '@/lib/remote'
 import { packageRoot, cloneInto, updateStatus } from '@/lib/watched'
@@ -36,7 +36,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `package "${item.name}" not found in remote` }, { status: 404 })
       }
       const res = ingest(REPO_DIR, pkg.root, { overwrite: true, version: item.remoteVersion })
-      commitAll(`update ${res.name} to ${item.remoteVersion} (from remote ${item.sourceUrl})`)
       try {
         push()
       } catch (e) {
@@ -56,7 +55,6 @@ export async function POST(req: NextRequest) {
   if (!root) return NextResponse.json({ error: 'source package not found; refresh the repo' }, { status: 404 })
   try {
     const res = ingest(REPO_DIR, root, { overwrite: true, version: item.remoteVersion })
-    commitAll(`update ${res.name} to ${item.remoteVersion} (from ${item.repoId})`)
     try {
       push()
     } catch (e) {
