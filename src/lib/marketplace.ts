@@ -1,7 +1,9 @@
 /** @author sgz @since 2026-07-03 */
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import matter from 'gray-matter'
+import { withWorkTree } from './worktree'
 
 export interface PluginEntry {
   name: string
@@ -22,14 +24,23 @@ export interface PluginDetail {
   files: string[]
 }
 
-function manifestPath(repoDir: string): string {
-  return path.join(repoDir, '.claude-plugin', 'marketplace.json')
+// git show <ref>，失败（无 HEAD / 路径不存在）返回 null
+function gitShow(repoDir: string, ref: string): string | null {
+  try {
+    return execFileSync('git', ['-C', repoDir, 'show', ref], { stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+  } catch {
+    return null
+  }
+}
+
+function manifestPath(): string {
+  return '.claude-plugin/marketplace.json'
 }
 
 export function readMarketplace(repoDir: string): Marketplace {
-  const p = manifestPath(repoDir)
-  if (!fs.existsSync(p)) return { name: '', owner: { name: '' }, plugins: [] }
-  const m = JSON.parse(fs.readFileSync(p, 'utf8')) as Marketplace
+  const content = gitShow(repoDir, `HEAD:${manifestPath()}`)
+  if (!content) return { name: '', owner: { name: '' }, plugins: [] }
+  const m = JSON.parse(content) as Marketplace
   m.plugins ??= []
   return m
 }
@@ -39,36 +50,34 @@ export function listPlugins(repoDir: string): PluginEntry[] {
 }
 
 export function writeMarketName(repoDir: string, name: string): void {
-  const p = manifestPath(repoDir)
-  const m = readMarketplace(repoDir)
-  m.name = name
-  fs.mkdirSync(path.dirname(p), { recursive: true })
-  fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
-}
-
-function walk(dir: string, base: string, out: string[]): void {
-  for (const name of fs.readdirSync(dir).sort()) {
-    if (name === '.git') continue
-    const full = path.join(dir, name)
-    const rel = path.relative(base, full)
-    if (fs.statSync(full).isDirectory()) walk(full, base, out)
-    else out.push(rel)
-  }
+  withWorkTree(repoDir, wt => {
+    const m = readMarketplace(repoDir) // 读当前 HEAD
+    m.name = name
+    const p = path.join(wt, '.claude-plugin', 'marketplace.json')
+    fs.mkdirSync(path.dirname(p), { recursive: true })
+    fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
+  }, `rename marketplace to ${name}`)
 }
 
 export function getPluginDetail(repoDir: string, name: string): PluginDetail | null {
   const entry = listPlugins(repoDir).find(p => p.name === name)
   if (!entry) return null
-  const pluginDir = path.join(repoDir, 'plugins', name)
-  if (!fs.existsSync(pluginDir)) return null
-  const files: string[] = []
-  walk(pluginDir, pluginDir, files)
-  // 技能说明优先 README.md，缺失时回退 SKILL.md
+  let tree: string
+  try {
+    tree = execFileSync('git', ['-C', repoDir, 'ls-tree', '-r', '--name-only', 'HEAD', '--', `plugins/${name}`], { stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+  } catch {
+    return null
+  }
+  const prefix = `plugins/${name}/`
+  const files = tree.split('\n').map(s => s.trim()).filter(Boolean)
+    .filter(f => f.startsWith(prefix)).map(f => f.slice(prefix.length))
   const docRel =
     files.find(f => /^skills\/[^/]+\/README\.md$/i.test(f)) ??
     files.find(f => /^skills\/[^/]+\/SKILL\.md$/i.test(f))
-  const skillMarkdown = docRel
-    ? matter(fs.readFileSync(path.join(pluginDir, docRel), 'utf8')).content.trim() // 剥掉 YAML frontmatter，只展示正文
-    : null
+  let skillMarkdown: string | null = null
+  if (docRel) {
+    const raw = gitShow(repoDir, `HEAD:plugins/${name}/${docRel}`)
+    if (raw) skillMarkdown = matter(raw).content.trim()
+  }
   return { entry, skillMarkdown, files }
 }
