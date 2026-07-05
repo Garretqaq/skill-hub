@@ -411,3 +411,16 @@ test('restoreWatchedFromRepo：本地已有列表时不覆盖', async () => {
   restoreWatchedFromRepo()
   expect(listWatched().map(r => r.id)).toEqual(['keep']) // 未被仓库空列表覆盖
 })
+
+test('buildIndex 缓存：removeWatched 后再次 buildIndex 反映变更（防陈旧）', async () => {
+  const { cloneInto, removeWatched, buildIndex } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha')
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+
+  expect(buildIndex()).toHaveLength(1) // 先构建，填充缓存
+  removeWatched(id)                    // 应使缓存失效
+  expect(buildIndex()).toHaveLength(0) // 若未失效会返回陈旧的 1
+})

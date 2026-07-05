@@ -69,6 +69,7 @@ export function restoreWatchedFromRepo(): void {
     try { if (!fs.existsSync(cacheDir(r.id))) cloneInto(r.url, cacheDir(r.id)) }
     catch { /* 单个克隆失败不阻断其余恢复 */ }
   }
+  invalidateIndex()
 }
 
 // 浅克隆到目标目录（已存在先删）；url 由调用方保证已规范化
@@ -91,12 +92,14 @@ export function addWatched(source: string): WatchedRepo {
   cloneInto(url, cacheDir(id))
   const repo: WatchedRepo = { id, source, url, addedAt: new Date().toISOString() }
   writeAll([...repos, repo])
+  invalidateIndex()
   return repo
 }
 
 export function removeWatched(id: string): void {
   writeAll(readAll().filter(r => r.id !== id))
   fs.rmSync(cacheDir(id), { recursive: true, force: true })
+  invalidateIndex()
 }
 
 // 手动刷新：fetch + reset 到远程 HEAD；缓存损坏/缺失时兜底重克隆
@@ -111,6 +114,7 @@ export function refreshWatched(id: string): void {
   } catch {
     cloneInto(repo.url, dir)
   }
+  invalidateIndex()
 }
 // 逐个刷新，单个失败不影响其余；全部尝试后再抛聚合错误
 export function refreshAll(): void {
@@ -128,8 +132,15 @@ function marketNameOf(id: string): string | null {
   } catch { return null }
 }
 
-// 聚合索引：现扫每个监听库的缓存克隆
+// 进程内单槽索引缓存：key 用 cacheRoot()，测试 chdir 到不同临时目录时自然重建、不串味，
+// 生产只有一个 DATA_DIR = 单槽不增长。变更（add/remove/refresh/restore）后须 invalidateIndex()。
+let indexCache: { key: string; data: IndexedPackage[] } | null = null
+export function invalidateIndex(): void { indexCache = null }
+
+// 聚合索引：现扫每个监听库的缓存克隆（命中缓存直接返回，调用方勿修改返回数组）
 export function buildIndex(): IndexedPackage[] {
+  const key = cacheRoot()
+  if (indexCache && indexCache.key === key) return indexCache.data
   const out: IndexedPackage[] = []
   for (const r of readAll()) {
     const dir = cacheDir(r.id)
@@ -149,6 +160,7 @@ export function buildIndex(): IndexedPackage[] {
       })
     }
   }
+  indexCache = { key, data: out }
   return out
 }
 
