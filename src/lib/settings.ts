@@ -1,7 +1,7 @@
 /** @author sgz @since 2026-07-03 */
 import fs from 'node:fs'
 import path from 'node:path'
-import { MARKETPLACE_REPO_URL, MARKETPLACE_NAME, REPO_DIR, stripCreds } from './config'
+import { MARKETPLACE_REPO_URL, MARKETPLACE_NAME, REPO_DIR, DATA_DIR, stripCreds } from './config'
 import { readMarketplace } from './marketplace'
 
 interface Settings {
@@ -10,7 +10,7 @@ interface Settings {
 }
 
 function settingsFile(): string {
-  return path.resolve('data/settings.json')
+  return path.join(DATA_DIR, 'settings.json')
 }
 
 function read(): Settings {

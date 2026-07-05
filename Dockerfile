@@ -23,7 +23,8 @@ RUN mkdir -p /data
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-# 运行时数据（marketplace 克隆、被监听仓库）默认落到可写的 /data
+# 运行时数据（settings.json、watched.json、marketplace 克隆、被监听仓库）落到挂载卷 /data
+ENV DATA_DIR=/data
 ENV MARKETPLACE_DIR=/data/marketplace
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -6,6 +6,7 @@ import { discoverPackages } from './ingest'
 import { normalizeSource } from './remote'
 import { listPlugins } from './marketplace'
 import { isValidVersion, compareVersions } from './semver'
+import { DATA_DIR, REPO_DIR } from './config'
 
 export interface WatchedRepo { id: string; source: string; url: string; addedAt: string }
 export interface IndexedPackage {
@@ -16,8 +17,8 @@ export interface IndexedPackage {
   localVersion?: string // 已导入本地市场的版本；未导入为 undefined
 }
 
-const storeFile = () => path.resolve('data/watched.json')
-const cacheRoot = () => path.resolve('data/watched')
+const storeFile = () => path.join(DATA_DIR, 'watched.json')
+const cacheRoot = () => path.join(DATA_DIR, 'watched')
 const cacheDir = (id: string) => path.join(cacheRoot(), id)
 
 export function toId(source: string): string {
@@ -119,7 +120,7 @@ export function buildIndex(): IndexedPackage[] {
 
 // 本地市场已导入包的 name→version（现算 repoDir，理由同 updateStatus 注释）
 function localVersionMap(): Map<string, string> {
-  const repoDir = path.resolve(process.env.MARKETPLACE_DIR || 'data/marketplace')
+  const repoDir = REPO_DIR
   const map = new Map<string, string>()
   for (const p of listPlugins(repoDir)) if (p.version) map.set(p.name, p.version)
   return map
@@ -155,7 +156,7 @@ export function updateStatus(): UpdateItem[] {
   // ponytail: 不复用 config.ts 的 REPO_DIR 常量——它在模块加载时计算一次，
   // 而本文件其余路径（storeFile/cacheRoot 等）均按调用时的 cwd 现算，测试靠 chdir 隔离；
   // 复用会读到导入时的旧 cwd，导致测试失败。此处按同一惯例现算。
-  const repoDir = path.resolve(process.env.MARKETPLACE_DIR || 'data/marketplace')
+  const repoDir = REPO_DIR
   const local = listPlugins(repoDir)
 
   // 远程按 name 取 version 最高者（同名多库时）

@@ -1,9 +1,11 @@
 /** @author sgz @since 2026-07-03 */
 import path from 'node:path'
 
+// 所有运行时数据的根目录：Docker 里设为挂载卷 /data，本地默认 ./data
+export const DATA_DIR = path.resolve(process.env.DATA_DIR || 'data')
 export const REPO_DIR = process.env.MARKETPLACE_DIR
   ? path.resolve(process.env.MARKETPLACE_DIR)
-  : path.resolve('data/marketplace')
+  : path.join(DATA_DIR, 'marketplace')
 export const MARKETPLACE_NAME = process.env.MARKETPLACE_NAME || 'my-skills'
 export const MARKETPLACE_REPO_URL = process.env.MARKETPLACE_REPO_URL || ''
 export const ADMIN_USER = process.env.ADMIN_USER || ''
