@@ -1,8 +1,10 @@
 /** @author sgz @since 2026-07-03 */
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import matter from 'gray-matter'
 import { readMarketplace, type PluginEntry } from './marketplace'
+import { withWorkTree } from './worktree'
 import { isValidVersion, bumpPatch, compareVersions } from './semver'
 
 export interface IngestResult { name: string; type: 'plugin' | 'skill' }
@@ -14,7 +16,7 @@ export function toKebab(s: string): string {
 function copyDir(src: string, dest: string): void {
   fs.mkdirSync(dest, { recursive: true })
   for (const name of fs.readdirSync(src)) {
-    if (name === '.git') continue // 跳过源克隆的 .git，否则目标成内嵌 git 仓库，被父仓库记成 gitlink（只见引用无文件）
+    if (name === '.git') continue // 跳过源克隆的 .git，避免目标成 gitlink
     const s = path.join(src, name), d = path.join(dest, name)
     if (fs.statSync(s).isDirectory()) copyDir(s, d)
     else fs.copyFileSync(s, d)
@@ -37,11 +39,31 @@ function findRoot(dir: string): { root: string; kind: 'plugin' | 'skill' } | nul
   return null
 }
 
-function writeManifestEntry(repoDir: string, entry: PluginEntry): void {
-  const p = path.join(repoDir, '.claude-plugin', 'marketplace.json')
-  const m = readMarketplace(repoDir)
+// git show + JSON.parse，失败（路径不存在）返回 null
+function gitShowJson(repoDir: string, ref: string): any | null {
+  try {
+    return JSON.parse(execFileSync('git', ['-C', repoDir, 'show', ref], { stdio: ['ignore', 'pipe', 'pipe'] }).toString())
+  } catch {
+    return null
+  }
+}
+
+// 检查 plugins/<name> 是否在 HEAD tree（替代原 fs.existsSync(dest)）
+function pluginExistsInHead(repoDir: string, name: string): boolean {
+  try {
+    const out = execFileSync('git', ['-C', repoDir, 'ls-tree', 'HEAD', '--', `plugins/${name}`], { stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+    return out.trim().length > 0
+  } catch {
+    return false
+  }
+}
+
+// 在 work-tree 里写 manifest 条目（读当前 HEAD 的 manifest，替换/新增条目，写到 wt）
+function writeManifestEntry(repoDir: string, wt: string, entry: PluginEntry): void {
+  const m = readMarketplace(repoDir) // 读当前 HEAD
   m.plugins = m.plugins.filter(x => x.name !== entry.name)
   m.plugins.push(entry)
+  const p = path.join(wt, '.claude-plugin', 'marketplace.json')
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
 }
@@ -68,25 +90,21 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
     tags = fm.tags || []
     pkgVersion = typeof fm.version === 'string' ? fm.version : ''
   }
-  if (opts?.description) description = opts.description // 非空时覆盖包内描述
+  if (opts?.description) description = opts.description
   if (!name) throw new Error('unrecognized package: empty name')
 
-  const dest = path.join(repoDir, 'plugins', name)
-  const existed = fs.existsSync(dest)
+  const existed = pluginExistsInHead(repoDir, name)
   if (existed && !opts?.overwrite) throw new Error(`name exists: ${name}`)
 
   if (opts?.version && !isValidVersion(opts.version)) {
     throw new Error(`invalid version: ${opts.version}`)
   }
 
-  // 覆盖时读现有插件版本，用于自增与防降级
+  // 覆盖时读现有插件版本（从 HEAD），用于自增与防降级
   let currentVersion = ''
   if (existed) {
-    const curPjPath = path.join(dest, '.claude-plugin', 'plugin.json')
-    if (fs.existsSync(curPjPath)) {
-      const curPj = JSON.parse(fs.readFileSync(curPjPath, 'utf8'))
-      currentVersion = typeof curPj.version === 'string' ? curPj.version : ''
-    }
+    const curPj = gitShowJson(repoDir, `HEAD:plugins/${name}/.claude-plugin/plugin.json`)
+    if (curPj) currentVersion = typeof curPj.version === 'string' ? curPj.version : ''
   }
 
   // 版本决议
@@ -102,37 +120,39 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
     version = opts?.version || fromPkg || '1.0.0'
   }
 
-  if (existed) {
-    fs.rmSync(dest, { recursive: true, force: true }) // 覆盖：先删旧目录，manifest 条目由下方替换
-  }
+  const finalDescription = description
+  const finalVersion = version
+  withWorkTree(repoDir, wt => {
+    const dest = path.join(wt, 'plugins', name)
+    if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true }) // 覆盖：删 work-tree 里旧目录
 
-  if (found.kind === 'plugin') {
-    copyDir(found.root, dest)
-    // 用决议后的 version 覆盖插件自带 plugin.json 的 version
-    const pjPath = path.join(dest, '.claude-plugin', 'plugin.json')
-    const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'))
-    pj.version = version
-    pj.description = description // 与 manifest 保持一致
-    fs.writeFileSync(pjPath, JSON.stringify(pj, null, 2) + '\n')
-  } else {
-    // 裸 skill：包壳成 plugins/<name>/skills/<name>/ + plugin.json
-    const skillDir = path.join(dest, 'skills', name)
-    copyDir(found.root, skillDir)
-    fs.mkdirSync(path.join(dest, '.claude-plugin'), { recursive: true })
-    fs.writeFileSync(
-      path.join(dest, '.claude-plugin', 'plugin.json'),
-      JSON.stringify({ name, description, version }, null, 2) + '\n',
-    )
-  }
+    if (found.kind === 'plugin') {
+      copyDir(found.root, dest)
+      const pjPath = path.join(dest, '.claude-plugin', 'plugin.json')
+      const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'))
+      pj.version = finalVersion
+      pj.description = finalDescription
+      fs.writeFileSync(pjPath, JSON.stringify(pj, null, 2) + '\n')
+    } else {
+      const skillDir = path.join(dest, 'skills', name)
+      copyDir(found.root, skillDir)
+      fs.mkdirSync(path.join(dest, '.claude-plugin'), { recursive: true })
+      fs.writeFileSync(
+        path.join(dest, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name, description: finalDescription, version: finalVersion }, null, 2) + '\n',
+      )
+    }
 
-  writeManifestEntry(repoDir, {
-    name,
-    source: `./plugins/${name}`,
-    description,
-    tags,
-    version,
-    displayName: opts?.displayName?.trim() || undefined,
-  })
+    writeManifestEntry(repoDir, wt, {
+      name,
+      source: `./plugins/${name}`,
+      description: finalDescription,
+      tags,
+      version: finalVersion,
+      displayName: opts?.displayName?.trim() || undefined,
+    })
+  }, `${opts?.overwrite ? 'update' : 'add'} ${name}`)
+
   return { name, type: found.kind }
 }
 
@@ -166,27 +186,20 @@ export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; des
 export function discoverPackages(dir: string): DiscoveredPackage[] {
   const packages: DiscoveredPackage[] = []
 
-  // 扫描本地文件型包
   for (const { root, kind } of findRoots(dir)) {
     if (kind === 'plugin') {
       const pj = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin/plugin.json'), 'utf8'))
       packages.push({
         name: toKebab(pj.name || path.basename(root)),
-        kind,
-        description: pj.description || '',
-        root,
-        sourceUrl: undefined,
-        version: typeof pj.version === 'string' ? pj.version : undefined
+        kind, description: pj.description || '', root, sourceUrl: undefined,
+        version: typeof pj.version === 'string' ? pj.version : undefined,
       })
     } else {
       const fm = matter(fs.readFileSync(path.join(root, 'SKILL.md'), 'utf8')).data
       packages.push({
         name: toKebab(fm.name || path.basename(root)),
-        kind,
-        description: fm.description || '',
-        root,
-        sourceUrl: undefined,
-        version: typeof fm.version === 'string' ? fm.version : undefined
+        kind, description: fm.description || '', root, sourceUrl: undefined,
+        version: typeof fm.version === 'string' ? fm.version : undefined,
       })
     }
   }
@@ -201,22 +214,23 @@ export function discoverPackages(dir: string): DiscoveredPackage[] {
         for (const entry of marketplace.plugins) {
           if (entry.source?.url && entry.name) {
             const kebabName = toKebab(entry.name)
-            if (localNames.has(kebabName)) continue // ponytail: 本地包优先，跳过同名引用
+            if (localNames.has(kebabName)) continue
             packages.push({
-              name: kebabName,
-              kind: 'plugin',
-              description: entry.description || '',
-              root: null,
-              sourceUrl: entry.source.url,
-              version: typeof entry.version === 'string' ? entry.version : undefined
+              name: kebabName, kind: 'plugin', description: entry.description || '',
+              root: null, sourceUrl: entry.source.url,
+              version: typeof entry.version === 'string' ? entry.version : undefined,
             })
           }
         }
       }
     } catch {
-      // ponytail: 畸形 marketplace.json 静默跳过
+      // 畸形 marketplace.json 静默跳过
     }
   }
 
   return packages
 }
+
+
+
+
