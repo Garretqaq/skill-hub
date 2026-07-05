@@ -78,11 +78,15 @@ export function restoreWatchedFromRepo(): void {
 // 浅克隆到目标目录（已存在先删）；url 由调用方保证已规范化
 // --recurse-submodules：市场用 submodule 引用包时（如 superpowers），拉取真实文件而非空 gitlink
 export function cloneInto(url: string, dir: string): void {
-  execFileSync('git', ['clone', '--depth=1', '--', url, dir], { stdio: 'pipe' })
+  fs.rmSync(dir, { recursive: true, force: true })
+  fs.mkdirSync(path.dirname(dir), { recursive: true })
+  execFileSync('git', ['clone', '--depth', '1', '--recurse-submodules', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
 export async function cloneIntoAsync(url: string, dir: string): Promise<void> {
-  await execFileAsync('git', ['clone', '--depth=1', '--', url, dir], { stdio: 'pipe' })
+  fs.rmSync(dir, { recursive: true, force: true })
+  fs.mkdirSync(path.dirname(dir), { recursive: true })
+  await execFileAsync('git', ['clone', '--depth', '1', '--recurse-submodules', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
 async function runPool<T>(tasks: (() => Promise<T>)[], concurrency: number): Promise<T[]> {
@@ -99,10 +103,6 @@ async function runPool<T>(tasks: (() => Promise<T>)[], concurrency: number): Pro
   const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, worker)
   await Promise.all(workers)
   return results
-}
-  fs.rmSync(dir, { recursive: true, force: true })
-  fs.mkdirSync(path.dirname(dir), { recursive: true })
-  execFileSync('git', ['clone', '--depth', '1', '--recurse-submodules', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
 export function addWatched(source: string): WatchedRepo {
@@ -127,26 +127,35 @@ export function removeWatched(id: string): void {
   invalidateIndex()
 }
 
-// 手动刷新：fetch + reset 到远程 HEAD；缓存损坏/缺失时兜底重克隆
-export function refreshWatched(id: string): void {
+// 单库刷新：fetch + reset 到远程 HEAD；缓存损坏/缺失时兜底重克隆（库内三步有依赖，仍串行）
+async function refreshOne(id: string): Promise<void> {
   const repo = readAll().find(r => r.id === id)
   if (!repo) throw new Error(`not watching: ${id}`)
   const dir = cacheDir(id)
   try {
-    execFileSync('git', ['fetch', '--depth', '1', 'origin'], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] })
-    execFileSync('git', ['reset', '--hard', 'FETCH_HEAD'], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] })
-    execFileSync('git', ['submodule', 'update', '--init', '--recursive', '--depth', '1'], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] })
+    await execFileAsync('git', ['fetch', '--depth', '1', 'origin'], { cwd: dir })
+    await execFileAsync('git', ['reset', '--hard', 'FETCH_HEAD'], { cwd: dir })
+    await execFileAsync('git', ['submodule', 'update', '--init', '--recursive', '--depth', '1'], { cwd: dir })
   } catch {
-    cloneInto(repo.url, dir)
+    await cloneIntoAsync(repo.url, dir)
   }
+}
+
+// 手动刷新单个监听库
+export async function refreshWatched(id: string): Promise<void> {
+  await refreshOne(id)
   invalidateIndex()
 }
-// 逐个刷新，单个失败不影响其余；全部尝试后再抛聚合错误
-export function refreshAll(): void {
+
+// 全部刷新：库间并行（上限 6），单个失败不影响其余；全部尝试后抛聚合错误
+export async function refreshAll(): Promise<void> {
+  const repos = readAll()
   const errs: string[] = []
-  for (const r of readAll()) {
-    try { refreshWatched(r.id) } catch (e) { errs.push(`${r.id}: ${String(e)}`) }
-  }
+  const tasks = repos.map(r => async () => {
+    try { await refreshOne(r.id) } catch (e) { errs.push(`${r.id}: ${String(e)}`) }
+  })
+  await runPool(tasks, 6)
+  invalidateIndex()
   if (errs.length) throw new Error(`refresh failed:\n${errs.join('\n')}`)
 }
 

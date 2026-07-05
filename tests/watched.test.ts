@@ -164,7 +164,7 @@ test('refreshWatched 拉取远程新提交', async () => {
   execFileSync('git', ['add', '-A'], { cwd: remote })
   execFileSync('git', ['commit', '-q', '-m', 'add beta'], { cwd: remote })
 
-  refreshWatched(id)
+  await refreshWatched(id)
   expect(buildIndex().map(p => p.name).sort()).toEqual(['alpha', 'beta'])
 })
 
@@ -223,7 +223,7 @@ test('refreshAll 容错：单个失败不影响其余，全部尝试后抛聚合
   execFileSync('git', ['commit', '-q', '-m', 'add beta'], { cwd: remote })
 
   // refreshAll 应该抛聚合错误
-  expect(() => refreshAll()).toThrow(/refresh failed/)
+  await expect(refreshAll()).rejects.toThrow(/refresh failed/)
 
   // 但 validId 应该已经刷新成功
   const { buildIndex } = await import('@/lib/watched')
@@ -301,7 +301,7 @@ test('updateStatus：远程版本更高才算有更新，更新后闭环', async
   fs.writeFileSync(path.join(remote, 'plugins/alpha/.claude-plugin/plugin.json'),
     JSON.stringify({ name: 'alpha', description: 'alpha desc', version: '1.1.0' }))
   execFileSync('git', ['commit', '-qam', 'bump'], { cwd: remote })
-  refreshWatched(id)
+  await refreshWatched(id)
 
   const ups = updateStatus()
   expect(ups).toHaveLength(1)
@@ -423,4 +423,25 @@ test('buildIndex 缓存：removeWatched 后再次 buildIndex 反映变更（防�
   expect(buildIndex()).toHaveLength(1) // 先构建，填充缓存
   removeWatched(id)                    // 应使缓存失效
   expect(buildIndex()).toHaveLength(0) // 若未失效会返回陈旧的 1
+})
+
+test('refreshAll 后 buildIndex 反映远程新提交（缓存失效 + 并行）', async () => {
+  const { cloneInto, refreshAll, buildIndex } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha')
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+
+  expect(buildIndex().map(p => p.name)).toEqual(['alpha']) // 填充缓存
+
+  const root = path.join(remote, 'plugins', 'beta')
+  fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'beta', description: 'beta desc', version: '1.0.0' }))
+  execFileSync('git', ['add', '-A'], { cwd: remote })
+  execFileSync('git', ['commit', '-q', '-m', 'add beta'], { cwd: remote })
+
+  await refreshAll()
+  expect(buildIndex().map(p => p.name).sort()).toEqual(['alpha', 'beta']) // 若缓存未失效仍是 ['alpha']
 })
