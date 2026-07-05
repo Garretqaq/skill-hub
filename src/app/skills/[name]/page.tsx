@@ -160,7 +160,7 @@ export default async function SkillDetailPage({ params }: PageProps) {
                       </svg>
                       技能说明
                     </h2>
-                    <div className="prose prose-invert prose-zinc max-w-none break-words prose-headings:text-zinc-100 prose-p:text-zinc-300 prose-a:text-cyan-400 prose-strong:text-zinc-200 prose-code:text-cyan-400 prose-code:bg-zinc-800/50 prose-code:px-2 prose-code:py-1 prose-code:rounded prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800 prose-pre:overflow-x-auto">
+                    <div className="prose prose-zinc max-w-none break-words prose-a:text-cyan-400 prose-code:text-cyan-400 prose-code:bg-zinc-800/50 prose-code:px-2 prose-code:py-1 prose-code:rounded prose-pre:border prose-pre:border-zinc-700 prose-pre:overflow-x-auto">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {detail.skillMarkdown}
                       </ReactMarkdown>

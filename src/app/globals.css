@@ -49,6 +49,34 @@ body {
   color: var(--foreground);
 }
 
+/*
+ * Prose (Tailwind Typography) doesn't use zinc utilities, so it can't ride the
+ * ramp inversion above. Bind its color tokens to the zinc CSS vars instead of
+ * relying on prose-invert (which hard-codes light greys for dark bg only and
+ * stays invisible on the light theme's white). Now body/lists/tables/quotes and
+ * the raw-HTML fallback text all follow the theme automatically.
+ * Code blocks stay dark in both themes on purpose (fixed pre bg + light pre-code)
+ * so the cyan code accent keeps its contrast.
+ */
+.prose {
+  --tw-prose-body: var(--color-zinc-300);
+  --tw-prose-headings: var(--color-zinc-100);
+  --tw-prose-lead: var(--color-zinc-300);
+  --tw-prose-links: var(--color-cyan-400);
+  --tw-prose-bold: var(--color-zinc-200);
+  --tw-prose-counters: var(--color-zinc-400);
+  --tw-prose-bullets: var(--color-zinc-600);
+  --tw-prose-hr: var(--color-zinc-800);
+  --tw-prose-quotes: var(--color-zinc-200);
+  --tw-prose-quote-borders: var(--color-zinc-800);
+  --tw-prose-captions: var(--color-zinc-400);
+  --tw-prose-code: var(--color-zinc-100);
+  --tw-prose-pre-code: #e4e4e7;
+  --tw-prose-pre-bg: #09090b;
+  --tw-prose-th-borders: var(--color-zinc-700);
+  --tw-prose-td-borders: var(--color-zinc-800);
+}
+
 /* Smooth scroll */
 html {
   scroll-behavior: smooth;
