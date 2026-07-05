@@ -87,7 +87,7 @@ export function cloneInto(url: string, dir: string): void {
 export async function cloneIntoAsync(url: string, dir: string): Promise<void> {
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(path.dirname(dir), { recursive: true })
-  await execFileAsync('git', ['clone', '--depth', '1', '--recurse-submodules', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
+  await execFileAsync('git', ['clone', '--depth', '1', '--recurse-submodules', url, dir])
 }
 
 async function runPool<T>(tasks: (() => Promise<T>)[], concurrency: number): Promise<T[]> {
