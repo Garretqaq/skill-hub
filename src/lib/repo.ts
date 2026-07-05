@@ -15,24 +15,29 @@ function git(dir: string, args: string[]): string {
     cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...GIT_IDENTITY },
   }).toString()
 }
-function hasChanges(dir: string): boolean {
-  return git(dir, ['status', '--porcelain']).trim().length > 0
+
+// 清空工作目录（保留 .git），用于迁移旧式工作副本 + 首次提交后回到 no-checkout 形态
+function clearWorkTree(dir: string): void {
+  for (const name of fs.readdirSync(dir)) {
+    if (name === '.git') continue
+    fs.rmSync(path.join(dir, name), { recursive: true, force: true })
+  }
 }
 
-export function commitAllIn(dir: string, message: string): void {
-  git(dir, ['add', '-A'])
-  if (!hasChanges(dir)) return
-  git(dir, ['commit', '-q', '-m', message])
+// 迁移旧式工作副本到 no-checkout：工作目录有 plugins/ 时，对齐 index 后清空工作目录
+function migrateToNoCheckout(dir: string): void {
+  if (!fs.existsSync(path.join(dir, 'plugins'))) return
+  git(dir, ['reset', '--mixed', 'HEAD']) // 对齐 index 到 HEAD，避免后续误操作
+  clearWorkTree(dir)
 }
-export function resetHardIn(dir: string): void {
-  git(dir, ['reset', '--hard', 'HEAD'])
-}
+
 export function headOf(dir: string = REPO_DIR): string | null {
   try { return git(dir, ['rev-parse', 'HEAD']).trim() } catch { return null } // 未有提交时无 HEAD
 }
-// 回滚到某次提交（含工作区），push 失败时撤销刚生成的提交与其文件
+
+// push 失败时回滚到某次提交：reset --mixed 移动 HEAD + 重置 index，no-checkout 下工作目录本就空
 export function resetToIn(dir: string, head: string): void {
-  git(dir, ['reset', '--hard', head])
+  git(dir, ['reset', '--mixed', head])
 }
 export function resetTo(head: string): void { resetToIn(REPO_DIR, head) }
 
@@ -41,21 +46,23 @@ export function ensureRepo(): void {
     fs.mkdirSync(path.dirname(REPO_DIR), { recursive: true })
     const url = getRepoUrl()
     if (url) {
-      execFileSync('git', ['clone', url, REPO_DIR], { stdio: 'inherit' })
+      execFileSync('git', ['clone', '--no-checkout', url, REPO_DIR], { stdio: 'inherit' })
     } else {
       git(REPO_DIR, ['init', '-q'])
     }
   }
-  const manifest = path.join(REPO_DIR, '.claude-plugin', 'marketplace.json')
-  if (!fs.existsSync(manifest)) {
-    fs.mkdirSync(path.dirname(manifest), { recursive: true })
-    fs.writeFileSync(manifest, JSON.stringify(
-      { name: MARKETPLACE_NAME, owner: { name: 'sgz' }, plugins: [] }, null, 2) + '\n')
+  migrateToNoCheckout(REPO_DIR) // 旧式工作副本（有 plugins/）迁移到 no-checkout
+  // 首次提交（init 或 clone 空仓库）：无 HEAD，withWorkTree 无法 checkout，直接工作目录写 + add + commit + 清空
+  if (!headOf()) {
+    fs.mkdirSync(path.join(REPO_DIR, '.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(REPO_DIR, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify({ name: MARKETPLACE_NAME, owner: { name: 'sgz' }, plugins: [] }, null, 2) + '\n')
+    git(REPO_DIR, ['add', '-A'])
+    git(REPO_DIR, ['commit', '-q', '-m', 'init marketplace'])
+    clearWorkTree(REPO_DIR)
   }
-  // 保证有基础提交：这样上传 push 失败时可安全 reset 回上一状态，而非留下无法回滚的根提交
-  if (!headOf()) commitAllIn(REPO_DIR, 'init marketplace')
 }
-export function commitAll(message: string): void { commitAllIn(REPO_DIR, message) }
+
 export function push(): void {
   if (!getRepoUrl()) return // 无远程（本地 init）时跳过
   git(REPO_DIR, ['push', '-u', 'origin', 'HEAD']) // -u 兼容后配远程、无上游追踪的情况
@@ -75,16 +82,23 @@ export function setRemoteUrl(url: string): void {
   setRemoteUrlIn(REPO_DIR, url)
 }
 
-// 远程为准拉取覆盖本地；但本地有未推送提交时保留本地。远程空或历史不相干均安全处理。
+// 远程为准拉取覆盖本地；但本地有未推送提交时保留本地。no-checkout：reset --mixed 不 checkout 工作目录。
 export function syncFromRemoteIn(dir: string, url: string): void {
-  setRemoteUrlIn(dir, url)                                     // 确保 origin 指向目标
+  setRemoteUrlIn(dir, url)                                           // 确保 origin 指向目标
   const heads = git(dir, ['ls-remote', '--heads', 'origin']).trim()
-  if (!heads) return                                           // 远程无分支/提交，跳过
+  if (!heads) return                                                 // 远程无分支/提交，跳过
   git(dir, ['fetch', 'origin'])
-  const ahead = git(dir, ['rev-list', 'FETCH_HEAD..HEAD']).trim() // 本地领先远程的（未推送）提交
-  if (ahead) return                                            // 有未推送改动则保留本地，避免首次配置远程时静默覆盖
-  git(dir, ['reset', '--hard', 'FETCH_HEAD'])                  // 无本地独有提交时才以远程覆盖
-  git(dir, ['clean', '-fd'])                                   // 清理未追踪残留，使覆盖完整
+  let branch = 'master'
+  try { branch = git(dir, ['symbolic-ref', '--short', 'HEAD']).trim() || 'master' } catch { /* detached/无 HEAD 时兜底 master */ }
+  const upstream = `origin/${branch}`
+  let ahead: string
+  try {
+    ahead = git(dir, ['rev-list', `${upstream}..HEAD`]).trim()       // 本地领先远程的（未推送）提交
+  } catch {
+    ahead = '1' // 历史不相干（无共同祖先）时 rev-list 报错，视为有本地独有提交，保留本地
+  }
+  if (ahead) return                                                  // 有未推送改动则保留本地
+  git(dir, ['reset', '--mixed', upstream])                           // 移动分支引用 + 重置 index，不动工作目录
 }
 export function syncFromRemote(): void {
   ensureRepo()                                              // .git 缺失时 clone（clone 即已同步）

@@ -1,59 +1,55 @@
-/** @author sgz @since 2026-07-03 */
+/** @author sgz @since 2026-07-05 */
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
-import { commitAllIn, resetHardIn, headOf, resetToIn, syncFromRemoteIn } from '@/lib/repo'
+import { headOf, resetToIn, syncFromRemoteIn } from '@/lib/repo'
 
-function gitRepo(): string {
+// no-checkout 仓库：init + 初始提交 + 清空工作目录
+function noCheckoutRepo(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shrepo-'))
   execFileSync('git', ['init', '-q'], { cwd: dir })
   execFileSync('git', ['config', 'user.email', 't@t'], { cwd: dir })
   execFileSync('git', ['config', 'user.name', 't'], { cwd: dir })
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'hi')
+  execFileSync('git', ['add', '-A'], { cwd: dir })
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: dir })
+  for (const f of fs.readdirSync(dir)) {
+    if (f !== '.git') fs.rmSync(path.join(dir, f), { recursive: true, force: true })
+  }
   return dir
 }
 
-test('commitAllIn commits new files', () => {
-  const dir = gitRepo()
-  fs.writeFileSync(path.join(dir, 'a.txt'), 'hi')
-  commitAllIn(dir, 'add a')
-  const log = execFileSync('git', ['log', '--oneline'], { cwd: dir }).toString()
-  expect(log).toContain('add a')
-})
+// 用临时 work-tree 在 no-checkout 仓上做提交（测试辅助，模拟 withWorkTree）
+function commitViaWorkTree(dir: string, file: string, content: string, msg: string): void {
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'shwt-'))
+  execFileSync('git', ['--work-tree', wt, 'checkout', '-f', 'HEAD'], { cwd: dir })
+  fs.mkdirSync(path.dirname(path.join(wt, file)), { recursive: true })
+  fs.writeFileSync(path.join(wt, file), content)
+  execFileSync('git', ['--work-tree', wt, 'add', '-A'], { cwd: dir })
+  execFileSync('git', ['commit', '-q', '-m', msg], { cwd: dir })
+  fs.rmSync(wt, { recursive: true, force: true })
+}
 
-test('resetHardIn drops uncommitted changes', () => {
-  const dir = gitRepo()
-  fs.writeFileSync(path.join(dir, 'a.txt'), 'hi')
-  commitAllIn(dir, 'add a')
-  fs.writeFileSync(path.join(dir, 'a.txt'), 'changed')
-  resetHardIn(dir)
-  expect(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('hi')
-})
+function headTree(dir: string): string {
+  return execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD'], { cwd: dir }).toString()
+}
 
-test('resetToIn undoes a later commit AND its files (retryable after failed push)', () => {
-  const dir = gitRepo()
-  fs.writeFileSync(path.join(dir, 'base.txt'), 'base')
-  commitAllIn(dir, 'init')
-  const before = headOf(dir)!            // 上传前状态
-  fs.mkdirSync(path.join(dir, 'plugins', 'x'), { recursive: true })
-  fs.writeFileSync(path.join(dir, 'plugins', 'x', 'a.txt'), 'hi')
-  commitAllIn(dir, 'add x')              // 模拟上传提交
-  resetToIn(dir, before)                 // 模拟 push 失败回滚
-  expect(fs.existsSync(path.join(dir, 'plugins', 'x'))).toBe(false) // 文件已移除 → 可重新上传
+test('resetToIn rolls back HEAD via reset --mixed, work dir stays empty', () => {
+  const dir = noCheckoutRepo()
+  const before = headOf(dir)!
+  commitViaWorkTree(dir, 'plugins/x/a.txt', 'hi', 'add x')
+  expect(headOf(dir)).not.toBe(before)
+  resetToIn(dir, before)
+  expect(headOf(dir)).toBe(before)
+  expect(fs.existsSync(path.join(dir, 'plugins'))).toBe(false) // 工作目录仍空
+  expect(headTree(dir)).not.toContain('plugins/x') // HEAD 已回滚
+  // 仅 1 次提交（init）
   expect(execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: dir }).toString().trim()).toBe('1')
 })
 
-test('commitAllIn is a no-op when nothing changed', () => {
-  const dir = gitRepo()
-  fs.writeFileSync(path.join(dir, 'a.txt'), 'hi')
-  commitAllIn(dir, 'first')
-  commitAllIn(dir, 'second') // no changes
-  const count = execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: dir }).toString().trim()
-  expect(count).toBe('1')
-})
-
-// 造一个带一次提交的 bare 远程，返回其路径
+// 造一个带一次提交的 bare 远程
 function bareRemoteWithCommit(): string {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'shwork-'))
   execFileSync('git', ['init', '-q'], { cwd: work })
@@ -67,65 +63,54 @@ function bareRemoteWithCommit(): string {
   return bare
 }
 
-// 从 bare 远程克隆出一个本地仓（与远程共享历史）
-function cloneFrom(bare: string): string {
+function cloneNoCheckoutFrom(bare: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shclone-'))
-  execFileSync('git', ['clone', '-q', bare, dir])
+  execFileSync('git', ['clone', '-q', '--no-checkout', bare, dir])
   execFileSync('git', ['config', 'user.email', 't@t'], { cwd: dir })
   execFileSync('git', ['config', 'user.name', 't'], { cwd: dir })
   return dir
 }
 
-// 向 bare 远程推入一个新提交（模拟别的客户端上传了技能）
 function pushNewCommit(bare: string, file: string, content: string): void {
-  const work = cloneFrom(bare)
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'shpush-'))
+  execFileSync('git', ['clone', '-q', bare, work])
+  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: work })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: work })
   fs.writeFileSync(path.join(work, file), content)
   execFileSync('git', ['add', '-A'], { cwd: work })
   execFileSync('git', ['commit', '-q', '-m', `add ${file}`], { cwd: work })
   execFileSync('git', ['push', '-q', 'origin', 'HEAD'], { cwd: work })
 }
 
-test('syncFromRemoteIn pulls remote changes when local shares history', () => {
+test('syncFromRemoteIn aligns HEAD to remote, work dir stays empty', () => {
   const remote = bareRemoteWithCommit()
-  const local = cloneFrom(remote)               // 本地是远程克隆，历史一致
-  pushNewCommit(remote, 'new-skill.txt', 'v2')  // 远程新增一次提交
-
+  const local = cloneNoCheckoutFrom(remote)
+  pushNewCommit(remote, 'new-skill.txt', 'v2')
   syncFromRemoteIn(local, remote)
-
-  expect(fs.readFileSync(path.join(local, 'new-skill.txt'), 'utf8')).toBe('v2') // 拉到远程新提交
+  const tree = headTree(local)
+  expect(tree).toContain('new-skill.txt')
+  expect(tree).toContain('remote-skill.txt')
+  expect(fs.existsSync(path.join(local, 'new-skill.txt'))).toBe(false) // 工作目录仍空
 })
 
-test('syncFromRemoteIn removes untracked local files (clean -fd)', () => {
+test('syncFromRemoteIn preserves local when it has unpushed commits (history unrelated)', () => {
   const remote = bareRemoteWithCommit()
-  const local = cloneFrom(remote)                    // 共享历史，无本地独有提交
-  fs.writeFileSync(path.join(local, 'untracked-leftover.txt'), 'leftover') // 未追踪残留
-
+  const local = noCheckoutRepo() // 本地 init，与远程历史不相干
+  commitViaWorkTree(local, 'local-only.txt', 'local', 'local upload')
+  const beforeHead = headOf(local)
   syncFromRemoteIn(local, remote)
-
-  expect(fs.existsSync(path.join(local, 'untracked-leftover.txt'))).toBe(false) // 被 clean 清除
-  expect(fs.readFileSync(path.join(local, 'remote-skill.txt'), 'utf8')).toBe('from-remote')
-})
-
-test('syncFromRemoteIn preserves local when it has unpushed commits (first-remote-setup guard)', () => {
-  const remote = bareRemoteWithCommit()
-  const local = gitRepo()                            // 本地 init，与远程历史不相干
-  fs.writeFileSync(path.join(local, 'local-only.txt'), 'local')
-  commitAllIn(local, 'local upload')                 // 本地已提交、未推送
-
-  syncFromRemoteIn(local, remote)
-
-  expect(fs.existsSync(path.join(local, 'local-only.txt'))).toBe(true)    // 未推送技能被保留
-  expect(fs.existsSync(path.join(local, 'remote-skill.txt'))).toBe(false) // 未被远程覆盖
+  expect(headOf(local)).toBe(beforeHead) // 本地 HEAD 不变
+  const tree = headTree(local)
+  expect(tree).toContain('local-only.txt')
+  expect(tree).not.toContain('remote-skill.txt')
 })
 
 test('syncFromRemoteIn is a safe no-op against an empty remote', () => {
   const emptyBare = fs.mkdtempSync(path.join(os.tmpdir(), 'shbareempty-')) + '.git'
   execFileSync('git', ['init', '-q', '--bare', emptyBare])
-  const local = gitRepo()
-  fs.writeFileSync(path.join(local, 'keep.txt'), 'keep')
-  commitAllIn(local, 'local init')
-
-  syncFromRemoteIn(local, emptyBare) // 不抛错
-
-  expect(fs.readFileSync(path.join(local, 'keep.txt'), 'utf8')).toBe('keep') // 本地保留
+  const local = noCheckoutRepo()
+  commitViaWorkTree(local, 'keep.txt', 'keep', 'local init')
+  const beforeHead = headOf(local)
+  syncFromRemoteIn(local, emptyBare)
+  expect(headOf(local)).toBe(beforeHead)
 })
