@@ -7,6 +7,7 @@ import { normalizeSource } from './remote'
 import { listPlugins } from './marketplace'
 import { isValidVersion, compareVersions } from './semver'
 import { DATA_DIR, REPO_DIR } from './config'
+import { withWorkTree } from './worktree'
 
 export interface WatchedRepo { id: string; source: string; url: string; addedAt: string }
 export interface IndexedPackage {
@@ -36,6 +37,39 @@ function writeAll(repos: WatchedRepo[]): void {
   fs.writeFileSync(storeFile(), JSON.stringify({ repos }, null, 2) + '\n')
 }
 export function listWatched(): WatchedRepo[] { return readAll() }
+
+// 监听列表在市场仓库里的存放路径（Claude 只解析 .claude-plugin/，此路径不干扰其解析）
+const WATCHED_IN_REPO = '.skill-hub/watched.json'
+
+// 从市场仓库 HEAD 读监听列表；无该文件/无 HEAD 返回 null（区别于「读到空列表」）
+function readWatchedFromRepo(): WatchedRepo[] | null {
+  try {
+    const out = execFileSync('git', ['-C', REPO_DIR, 'show', `HEAD:${WATCHED_IN_REPO}`], { stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+    return JSON.parse(out).repos ?? []
+  } catch { return null }
+}
+
+// 把当前监听列表写进市场仓库并提交（在临时 work-tree 内，push 由调用方负责）
+export function commitWatchedToRepo(): void {
+  const repos = readAll()
+  withWorkTree(REPO_DIR, wt => {
+    const p = path.join(wt, WATCHED_IN_REPO)
+    fs.mkdirSync(path.dirname(p), { recursive: true })
+    fs.writeFileSync(p, JSON.stringify({ repos }, null, 2) + '\n')
+  }, `update watched list (${repos.length})`)
+}
+
+// 容器重建后本地 watched.json 缺失时，从市场仓库 HEAD 恢复列表并重建缓存克隆
+export function restoreWatchedFromRepo(): void {
+  if (fs.existsSync(storeFile())) return          // 本地已有，不覆盖
+  const fromRepo = readWatchedFromRepo()
+  if (!fromRepo || fromRepo.length === 0) return  // 仓库无记录，无需恢复
+  writeAll(fromRepo)
+  for (const r of fromRepo) {
+    try { if (!fs.existsSync(cacheDir(r.id))) cloneInto(r.url, cacheDir(r.id)) }
+    catch { /* 单个克隆失败不阻断其余恢复 */ }
+  }
+}
 
 // 浅克隆到目标目录（已存在先删）；url 由调用方保证已规范化
 // --recurse-submodules：市场用 submodule 引用包时（如 superpowers），拉取真实文件而非空 gitlink

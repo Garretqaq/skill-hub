@@ -12,6 +12,7 @@ export interface PluginEntry {
   tags?: string[]
   version?: string
   displayName?: string
+  origin?: string  // 导入来源仓库（监听库 source / 引用型包 sourceUrl）；手动上传为 undefined
 }
 export interface Marketplace {
   name: string

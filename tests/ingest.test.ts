@@ -189,3 +189,22 @@ test('ingest 跳过源 .git 目录，避免目标成 gitlink', () => {
   expect(tree).not.toContain('.git')
 })
 
+
+test('ingest 记录 origin 到 manifest，覆盖时未显式提供则保留原 origin', () => {
+  const repo = seedRepo()
+  // 首次导入带 origin
+  ingest(repo, mkSkill('s', 'body', '1.0.0'), { origin: 'owner/repo' })
+  expect(readMarketplace(repo).plugins[0].origin).toBe('owner/repo')
+  // 覆盖导入不传 origin：保留原值
+  ingest(repo, mkSkill('s', 'body2', '1.1.0'), { overwrite: true })
+  expect(readMarketplace(repo).plugins[0].origin).toBe('owner/repo')
+  // 覆盖导入传新 origin：更新
+  ingest(repo, mkSkill('s', 'body3', '1.2.0'), { overwrite: true, origin: 'https://x/a/b.git' })
+  expect(readMarketplace(repo).plugins[0].origin).toBe('https://x/a/b.git')
+})
+
+test('ingest 无 origin 时 manifest origin 为 undefined（本地上传）', () => {
+  const repo = seedRepo()
+  ingest(repo, mkSkill('local', 'body', '1.0.0'))
+  expect(readMarketplace(repo).plugins[0].origin).toBeUndefined()
+})

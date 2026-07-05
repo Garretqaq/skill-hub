@@ -68,7 +68,7 @@ function writeManifestEntry(repoDir: string, wt: string, entry: PluginEntry): vo
   fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
 }
 
-export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string; description?: string; displayName?: string }): IngestResult {
+export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string; description?: string; displayName?: string; origin?: string }): IngestResult {
   const found = findRoot(extractedDir)
   if (!found) throw new Error('unrecognized package: no plugin.json or SKILL.md')
 
@@ -143,6 +143,8 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
       )
     }
 
+    // 覆盖导入时保留原 origin（若本次未显式提供）：读现有条目的 origin 作兜底
+    const prevOrigin = existed ? readMarketplace(repoDir).plugins.find(x => x.name === name)?.origin : undefined
     writeManifestEntry(repoDir, wt, {
       name,
       source: `./plugins/${name}`,
@@ -150,6 +152,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
       tags,
       version: finalVersion,
       displayName: opts?.displayName?.trim() || undefined,
+      origin: opts?.origin?.trim() || prevOrigin,
     })
   }, `${opts?.overwrite ? 'update' : 'add'} ${name}`)
 

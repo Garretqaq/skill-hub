@@ -346,8 +346,7 @@ test('updateStatus：远程版本非法（非 semver）不误报', async () => {
   expect(updateStatus()).toHaveLength(0)
 })
 
-test('updateStatus：同名包跨多个监听库时取最高版本', async () => {
-  const { cloneInto, updateStatus } = await import('@/lib/watched')
+test('updateStatus：同名包跨多个监听库时取最高版本', async () => {  const { cloneInto, updateStatus } = await import('@/lib/watched')
   const { ingest } = await import('@/lib/ingest')
   const repoLow = remoteRepo('shared')   // shared v1.0.0
   const repoHigh = remoteRepo('shared')  // 另一个远程库同样有 shared，先建后升到 v2.0.0
@@ -375,4 +374,40 @@ test('updateStatus：同名包跨多个监听库时取最高版本', async () =>
   const ups = updateStatus()
   expect(ups).toHaveLength(1)
   expect(ups[0]).toMatchObject({ name: 'shared', localVersion: '1.0.0', remoteVersion: '2.0.0' })
+})
+
+test('commitWatchedToRepo + restoreWatchedFromRepo：列表随市场仓库持久化并恢复', async () => {
+  const { cloneInto, commitWatchedToRepo, restoreWatchedFromRepo, listWatched } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha')
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+
+  const repoDir = path.join(work, 'data/marketplace')
+  initMarketRepo(repoDir)
+
+  // 写本地监听并提交进市场仓库
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+  commitWatchedToRepo()
+  // 提交进了 HEAD:.skill-hub/watched.json
+  const inRepo = execFileSync('git', ['-C', repoDir, 'show', 'HEAD:.skill-hub/watched.json']).toString()
+  expect(JSON.parse(inRepo).repos[0].id).toBe(id)
+
+  // 模拟容器重建：删本地列表与缓存，restore 应从仓库恢复并重建缓存克隆
+  fs.rmSync(path.join(work, 'data/watched.json'))
+  fs.rmSync(path.join(work, 'data/watched', id), { recursive: true, force: true })
+  restoreWatchedFromRepo()
+  expect(listWatched().map(r => r.id)).toEqual([id])
+  expect(fs.existsSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'))).toBe(true)
+})
+
+test('restoreWatchedFromRepo：本地已有列表时不覆盖', async () => {
+  const { restoreWatchedFromRepo, listWatched } = await import('@/lib/watched')
+  const repoDir = path.join(work, 'data/marketplace')
+  initMarketRepo(repoDir)
+  // 本地已有一条监听
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id: 'keep', source: 'a/b', url: 'https://x/a/b.git', addedAt: 'x' }] }))
+  restoreWatchedFromRepo()
+  expect(listWatched().map(r => r.id)).toEqual(['keep']) // 未被仓库空列表覆盖
 })
