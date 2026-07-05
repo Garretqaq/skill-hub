@@ -3,19 +3,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUser } from '@/lib/session'
 import { stripCreds } from '@/lib/config'
 import { listWatched, search, addWatched, removeWatched, commitWatchedToRepo, restoreWatchedFromRepo, buildIndex } from '@/lib/watched'
-import { ensureRepo, push, headOf, resetTo } from '@/lib/repo'
+import { ensureRepo, push, headOf, resetTo, syncFromRemote } from '@/lib/repo'
 
 // 监听列表变更后同步进市场仓库并推送；push 失败回滚仓库提交但保留本地变更，仅回传告警
 function syncWatched(): string | null {
-  ensureRepo()
-  const before = headOf()
   try {
-    commitWatchedToRepo()
-    push()
-    return null
+    syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
+    const before = headOf() // 对齐远程后再记录基线，push 失败回滚到此
+    try {
+      commitWatchedToRepo()
+      push()
+      return null
+    } catch (e) {
+      if (before) resetTo(before)
+      return stripCreds(String(e))
+    }
   } catch (e) {
-    if (before) resetTo(before)
-    return stripCreds(String(e))
+    return stripCreds(String(e)) // syncFromRemote 阶段失败：未提交，无需回滚
   }
 }
 
