@@ -1,7 +1,0 @@
-{
-  "name": "fx-market",
-  "owner": { "name": "sgz" },
-  "plugins": [
-    { "name": "hello-skill", "source": "./plugins/hello-skill", "description": "hi", "tags": ["demo"] }
-  ]
-}

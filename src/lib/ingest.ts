@@ -161,6 +161,8 @@ export interface FoundRoot { root: string; kind: 'plugin' | 'skill' }
 /** findRoot 的「收集全部」版：命中包根即不再下钻，避免插件内嵌 skills 被重复计数 */
 export function findRoots(dir: string): FoundRoot[] {
   const out: FoundRoot[] = []
+  // ponytail: 前置检查，目录不存在直接返回空（watched.test.ts 可能传不存在的缓存目录）
+  if (!fs.existsSync(dir)) return out
   const stack = [dir]
   while (stack.length) {
     const cur = stack.shift()!
@@ -172,10 +174,15 @@ export function findRoots(dir: string): FoundRoot[] {
       out.push({ root: cur, kind: 'skill' })
       continue
     }
-    for (const name of fs.readdirSync(cur)) {
-      if (name === '.git') continue
-      const full = path.join(cur, name)
-      if (fs.statSync(full).isDirectory()) stack.push(full)
+    // ponytail: try-catch 防止 readdirSync 在目录被删时抛错
+    try {
+      for (const name of fs.readdirSync(cur)) {
+        if (name === '.git') continue
+        const full = path.join(cur, name)
+        if (fs.statSync(full).isDirectory()) stack.push(full)
+      }
+    } catch {
+      // 目录不存在或无权限，跳过
     }
   }
   return out

@@ -3,18 +3,26 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 let cwd: string
 let work: string
+let originalDataDir: string | undefined
 
 beforeEach(() => {
   cwd = process.cwd()
   work = fs.mkdtempSync(path.join(os.tmpdir(), 'shwatch-'))
+  // ponytail: 保存原环境变量，设置测试专用 DATA_DIR，防止模块缓存的 DATA_DIR 路径不匹配
+  originalDataDir = process.env.DATA_DIR
+  process.env.DATA_DIR = path.join(work, 'data')
   process.chdir(work) // 隔离固定路径 data/watched.json 与 data/watched/
+  // ponytail: 清除模块缓存，确保 config.ts 的 DATA_DIR 基于新 env 重新计算
+  vi.resetModules()
 })
 afterEach(() => {
   process.chdir(cwd)
+  if (originalDataDir !== undefined) process.env.DATA_DIR = originalDataDir
+  else delete process.env.DATA_DIR
   fs.rmSync(work, { recursive: true, force: true })
 })
 
@@ -34,6 +42,24 @@ function remoteRepo(pluginName: string): string {
   execFileSync('git', ['add', '-A'], { cwd: dir })
   execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: dir })
   return dir
+}
+
+// ponytail: 初始化空的 no-checkout 市场仓库（供 ingest/withWorkTree 使用）
+function initMarketRepo(dir: string): void {
+  fs.mkdirSync(dir, { recursive: true })
+  execFileSync('git', ['init', '-q'], { cwd: dir })
+  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: dir })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: dir })
+  fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(dir, '.claude-plugin/marketplace.json'),
+    JSON.stringify({ name: 'mine', owner: { name: 'x' }, plugins: [] }))
+  execFileSync('git', ['add', '-A'], { cwd: dir })
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: dir })
+  execFileSync('git', ['reset', '--mixed', 'HEAD'], { cwd: dir }) // no-checkout
+  // 清空工作目录（除 .git）
+  for (const f of fs.readdirSync(dir)) {
+    if (f !== '.git') fs.rmSync(path.join(dir, f), { recursive: true, force: true })
+  }
 }
 
 test('cloneInto 浅克隆到目标目录', async () => {
@@ -103,11 +129,22 @@ test('search 标注 localVersion：已导入本地市场的包带本地版本', 
   // 未导入：localVersion 缺失
   expect(search('alpha')[0].localVersion).toBeUndefined()
 
-  // 造一个本地市场，alpha 已导入为 v1.0.0
+  // 造一个本地市场 no-checkout 仓库，alpha 已导入为 v1.0.0
   const repoDir = path.join(work, 'data/marketplace')
+  fs.mkdirSync(repoDir, { recursive: true })
+  execFileSync('git', ['init', '-q'], { cwd: repoDir })
+  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: repoDir })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: repoDir })
   fs.mkdirSync(path.join(repoDir, '.claude-plugin'), { recursive: true })
   fs.writeFileSync(path.join(repoDir, '.claude-plugin/marketplace.json'),
     JSON.stringify({ name: 'mine', owner: { name: 'x' }, plugins: [{ name: 'alpha', source: './plugins/alpha', version: '1.0.0' }] }))
+  execFileSync('git', ['add', '-A'], { cwd: repoDir })
+  execFileSync('git', ['commit', '-q', '-m', 'add alpha'], { cwd: repoDir })
+  execFileSync('git', ['reset', '--mixed', 'HEAD'], { cwd: repoDir }) // no-checkout 模式
+  // ponytail: 清空工作目录（除 .git）
+  for (const f of fs.readdirSync(repoDir)) {
+    if (f !== '.git') fs.rmSync(path.join(repoDir, f), { recursive: true, force: true })
+  }
   expect(search('alpha')[0].localVersion).toBe('1.0.0')
 })
 
@@ -251,8 +288,11 @@ test('updateStatus：远程版本更高才算有更新，更新后闭环', async
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
 
-  // 本地导入到 data/marketplace（v1.0.0）
+  // 初始化本地市场 no-checkout 仓库
   const repoDir = path.join(work, 'data/marketplace')
+  initMarketRepo(repoDir)
+
+  // 本地导入到 data/marketplace（v1.0.0）
   const cacheRoot = path.join(work, 'data/watched', id, 'plugins', 'alpha')
   ingest(repoDir, cacheRoot)
   expect(updateStatus()).toHaveLength(0)        // 版本相同，无更新
@@ -280,7 +320,9 @@ test('updateStatus：远程包无 version 不误报', async () => {
   cloneInto(remote, path.join(work, 'data/watched', id))
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
-  ingest(path.join(work, 'data/marketplace'), path.join(work, 'data/watched', id, 'plugins', 'alpha'))
+  const repoDir = path.join(work, 'data/marketplace')
+  initMarketRepo(repoDir)
+  ingest(repoDir, path.join(work, 'data/watched', id, 'plugins', 'alpha'))
   // 抹掉缓存里 alpha 的 version
   fs.writeFileSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'),
     JSON.stringify({ name: 'alpha', description: 'alpha desc' }))
@@ -295,7 +337,9 @@ test('updateStatus：远程版本非法（非 semver）不误报', async () => {
   cloneInto(remote, path.join(work, 'data/watched', id))
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
-  ingest(path.join(work, 'data/marketplace'), path.join(work, 'data/watched', id, 'plugins', 'alpha'))
+  const repoDir = path.join(work, 'data/marketplace')
+  initMarketRepo(repoDir)
+  ingest(repoDir, path.join(work, 'data/watched', id, 'plugins', 'alpha'))
   // 远程 version 是格式非法的字符串（非缺失，而是不满足 \d+\.\d+\.\d+）
   fs.writeFileSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'),
     JSON.stringify({ name: 'alpha', description: 'alpha desc', version: 'abc' }))
@@ -324,7 +368,9 @@ test('updateStatus：同名包跨多个监听库时取最高版本', async () =>
     }))
 
   // 本地导入 shared@1.0.0（低于两个远程版本）
-  ingest(path.join(work, 'data/marketplace'), path.join(work, 'data/watched', idLow, 'plugins', 'shared'))
+  const repoDir = path.join(work, 'data/marketplace')
+  initMarketRepo(repoDir)
+  ingest(repoDir, path.join(work, 'data/watched', idLow, 'plugins', 'shared'))
 
   const ups = updateStatus()
   expect(ups).toHaveLength(1)
