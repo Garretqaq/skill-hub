@@ -25,7 +25,8 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
   useEffect(() => setOrigin(window.location.origin), [])
 
   const or = parseOwnerRepo(repoUrl)
-  const proxyUrl = origin && or ? `${origin}/proxy/${or.owner}/${or.repo}` : ''
+  // 末尾带 .git：Claude Code 据此识别为 git 源走 clone；否则会当 HTTP-JSON 端点直接 fetch 报 schema 错
+  const proxyUrl = origin && or ? `${origin}/proxy/${or.owner}/${or.repo}.git` : ''
 
   const installCmd = `/plugin install ${name}@${market}`
 
