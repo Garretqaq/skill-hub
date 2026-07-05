@@ -2,12 +2,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUser } from '@/lib/session'
 import { stripCreds } from '@/lib/config'
-import { listWatched, search, addWatched, removeWatched } from '@/lib/watched'
+import { listWatched, search, addWatched, removeWatched, commitWatchedToRepo, restoreWatchedFromRepo, buildIndex } from '@/lib/watched'
+import { ensureRepo, push, headOf, resetTo, syncFromRemote } from '@/lib/repo'
+
+// 监听列表变更后同步进市场仓库并推送；push 失败回滚仓库提交但保留本地变更，仅回传告警
+function syncWatched(): string | null {
+  try {
+    syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
+    const before = headOf() // 对齐远程后再记录基线，push 失败回滚到此
+    try {
+      commitWatchedToRepo()
+      push()
+      return null
+    } catch (e) {
+      if (before) resetTo(before)
+      return stripCreds(String(e))
+    }
+  } catch (e) {
+    return stripCreds(String(e)) // syncFromRemote 阶段失败：未提交，无需回滚
+  }
+}
 
 export async function GET(req: NextRequest) {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  ensureRepo()
+  restoreWatchedFromRepo() // 容器重建后本地列表缺失则从仓库恢复
   const q = new URL(req.url).searchParams.get('q') ?? ''
-  return NextResponse.json({ repos: listWatched(), results: search(q) })
+  // 每个监听库发现的包数量（未过滤，用于列表展示）
+  const counts = new Map<string, number>()
+  for (const p of buildIndex()) counts.set(p.repoId, (counts.get(p.repoId) ?? 0) + 1)
+  const repos = listWatched().map(r => ({ ...r, packageCount: counts.get(r.id) ?? 0 }))
+  return NextResponse.json({ repos, results: search(q) })
 }
 
 export async function POST(req: NextRequest) {
@@ -15,7 +40,9 @@ export async function POST(req: NextRequest) {
   const { source } = await req.json().catch(() => ({}))
   if (!source) return NextResponse.json({ error: 'source required' }, { status: 400 })
   try {
-    return NextResponse.json(addWatched(String(source)))
+    const repo = addWatched(String(source))
+    const warning = syncWatched()
+    return NextResponse.json({ ...repo, warning })
   } catch (e) {
     return NextResponse.json({ error: stripCreds(String(e)) }, { status: 400 })
   }
@@ -26,5 +53,6 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json().catch(() => ({}))
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   removeWatched(String(id))
-  return NextResponse.json({ ok: true })
+  const warning = syncWatched()
+  return NextResponse.json({ ok: true, warning })
 }
