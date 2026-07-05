@@ -67,14 +67,15 @@ export default function HomePage() {
                 <span>即装即用</span>
               </div>
             </div>
-
-
-            {/* Open-source repo */}
-            <GitHubRepoCard />
           </div>
 
           {/* Grid */}
           <SkillGrid plugins={plugins} />
+
+          {/* Open-source repo */}
+          <div className="mt-16 pt-8 border-t border-zinc-800/60">
+            <GitHubRepoCard />
+          </div>
         </div>
       </div>
     </div>
