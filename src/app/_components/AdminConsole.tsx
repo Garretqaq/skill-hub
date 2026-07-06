@@ -4,9 +4,17 @@
  */
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { PluginEntry } from '@/lib/marketplace'
 import type { UpdateItem } from '@/lib/watched'
 import UploadForm from './UploadForm'
@@ -37,6 +45,47 @@ export default function AdminConsole({ plugins }: AdminConsoleProps) {
   useEffect(() => { loadUpdates() }, [loadUpdates])
 
   const onChanged = useCallback(() => { router.refresh(); loadUpdates() }, [router, loadUpdates])
+
+  // 初始顺序来自 props；order 存 name 数组
+  const initialOrder = useMemo(() => plugins.map(p => p.name), [plugins])
+  const [order, setOrder] = useState<string[]>(initialOrder)
+  const [saving, setSaving] = useState(false)
+  // props 变化（router.refresh 后）时重置本地顺序
+  useEffect(() => { setOrder(plugins.map(p => p.name)) }, [plugins])
+
+  const byName = useMemo(() => new Map(plugins.map(p => [p.name, p])), [plugins])
+  const dirty = order.length === initialOrder.length && order.some((n, i) => n !== initialOrder[i])
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    setOrder(prev => {
+      const from = prev.indexOf(String(active.id))
+      const to = prev.indexOf(String(over.id))
+      return arrayMove(prev, from, to)
+    })
+  }
+
+  const handleReset = () => setOrder(plugins.map(p => p.name))
+
+  const handleSaveOrder = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/skills/order', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order }),
+      })
+      if (!res.ok) { error(`保存排序失败: ${await res.text()}`); return }
+      success('排序已保存')
+      router.refresh()
+    } catch (err) {
+      error(`保存排序失败: ${err}`)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -80,6 +129,29 @@ export default function AdminConsole({ plugins }: AdminConsoleProps) {
         </div>
       </div>
 
+      {/* 未保存排序提示条 */}
+      {dirty && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+          <span className="text-sm text-amber-400">有未保存的排序改动</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleReset}
+              disabled={saving}
+              className="px-3 py-1.5 text-sm rounded-lg bg-zinc-800/50 text-zinc-300 border border-zinc-700 hover:bg-zinc-700/50 disabled:opacity-50 transition-colors"
+            >
+              撤销
+            </button>
+            <button
+              onClick={handleSaveOrder}
+              disabled={saving}
+              className="px-3 py-1.5 text-sm rounded-lg font-medium bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-50 transition-colors"
+            >
+              {saving ? '保存中...' : '保存排序'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Skill list */}
       {plugins.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center border border-dashed border-zinc-800 rounded-2xl">
@@ -88,16 +160,24 @@ export default function AdminConsole({ plugins }: AdminConsoleProps) {
         </div>
       ) : (
         <div className="divide-y divide-zinc-800 border border-zinc-800 rounded-2xl overflow-hidden bg-zinc-900/40 backdrop-blur-sm">
-          {plugins.map((plugin) => (
-            <AdminRow
-              key={plugin.name}
-              plugin={plugin}
-              update={updates[plugin.name]}
-              onChanged={onChanged}
-              onError={error}
-              onSuccess={success}
-            />
-          ))}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={order} strategy={verticalListSortingStrategy}>
+              {order.map((name) => {
+                const plugin = byName.get(name)
+                if (!plugin) return null
+                return (
+                  <AdminRow
+                    key={name}
+                    plugin={plugin}
+                    update={updates[name]}
+                    onChanged={onChanged}
+                    onError={error}
+                    onSuccess={success}
+                  />
+                )
+              })}
+            </SortableContext>
+          </DndContext>
         </div>
       )}
 
@@ -119,6 +199,8 @@ function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [updating, setUpdating] = useState(false)
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: plugin.name })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1 }
 
   const handleDelete = async () => {
     if (!confirming) {
@@ -159,7 +241,22 @@ function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
   }
 
   return (
-    <div className="flex items-center gap-4 p-5 hover:bg-zinc-900/60 transition-colors">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-4 p-5 transition-colors ${isDragging ? 'bg-zinc-800/80' : 'hover:bg-zinc-900/60'}`}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        aria-label="拖动排序"
+        className="flex-shrink-0 cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400 touch-none"
+      >
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M7 4a1 1 0 100 2 1 1 0 000-2zM7 9a1 1 0 100 2 1 1 0 000-2zM7 14a1 1 0 100 2 1 1 0 000-2zM13 4a1 1 0 100 2 1 1 0 000-2zM13 9a1 1 0 100 2 1 1 0 000-2zM13 14a1 1 0 100 2 1 1 0 000-2z" />
+        </svg>
+      </button>
+
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-3">
           <Link
