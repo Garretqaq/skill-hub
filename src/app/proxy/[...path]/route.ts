@@ -15,8 +15,10 @@ async function proxy(req: NextRequest, path: string[]) {
   const upstream = await fetch(buildUpstreamUrl(target, req.nextUrl.search), {
     method: req.method,
     headers,
-    body: req.method === 'POST' ? Buffer.from(await req.arrayBuffer()) : undefined,
+    body: req.body,
     redirect: 'follow',
+    // @ts-expect-error - duplex 是 fetch 标准的一部分，但 TS 类型定义还没跟上
+    duplex: 'half',
   })
 
   const resHeaders = new Headers(upstream.headers)
