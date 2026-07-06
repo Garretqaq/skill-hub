@@ -11,11 +11,14 @@ async function proxy(req: NextRequest, path: string[]) {
 
   const headers = new Headers(req.headers)
   STRIP_HEADERS.forEach(h => headers.delete(h))
+  // 强制上游走 git 协议 v0：v2 的多轮/分块响应流经 Next 转发时收尾异常，会导致 clone 卡死
+  headers.delete('git-protocol')
 
   const upstream = await fetch(buildUpstreamUrl(target, req.nextUrl.search), {
     method: req.method,
     headers,
-    body: req.body,
+    // GET/HEAD 不能带请求体，否则 undici 会抛错
+    body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body,
     redirect: 'follow',
     // @ts-expect-error - duplex 是 fetch 标准的一部分，但 TS 类型定义还没跟上
     duplex: 'half',
