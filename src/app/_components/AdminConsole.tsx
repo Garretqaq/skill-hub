@@ -244,7 +244,7 @@ function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-4 p-5 transition-colors ${isDragging ? 'bg-zinc-800/80' : 'hover:bg-zinc-900/60'}`}
+      className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${isDragging ? 'bg-zinc-800/80' : 'hover:bg-zinc-900/60'}`}
     >
       <button
         {...attributes}
@@ -252,37 +252,35 @@ function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
         aria-label="拖动排序"
         className="flex-shrink-0 cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400 touch-none"
       >
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
           <path d="M7 4a1 1 0 100 2 1 1 0 000-2zM7 9a1 1 0 100 2 1 1 0 000-2zM7 14a1 1 0 100 2 1 1 0 000-2zM13 4a1 1 0 100 2 1 1 0 000-2zM13 9a1 1 0 100 2 1 1 0 000-2zM13 14a1 1 0 100 2 1 1 0 000-2z" />
         </svg>
       </button>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/skills/${plugin.name}`}
-            className="text-lg font-semibold text-zinc-100 hover:text-cyan-400 transition-colors truncate"
+      <div className="min-w-0 flex-1 flex items-center gap-3">
+        <Link
+          href={`/skills/${plugin.name}`}
+          className="text-sm font-semibold text-zinc-100 hover:text-cyan-400 transition-colors truncate flex-shrink-0 max-w-[40%]"
+        >
+          {plugin.name}
+        </Link>
+        {update && (
+          <span
+            title="仅按版本号检测"
+            className="px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 rounded border border-amber-500/30 whitespace-nowrap flex-shrink-0"
           >
-            {plugin.name}
-          </Link>
-          {update && (
-            <span
-              title="仅按版本号检测"
-              className="px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 rounded border border-amber-500/30 whitespace-nowrap"
-            >
-              有更新 v{update.localVersion}→v{update.remoteVersion}
-            </span>
-          )}
-          {plugin.tags?.slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              className="hidden sm:inline px-2 py-0.5 text-xs font-medium bg-zinc-800/50 text-zinc-400 rounded border border-zinc-700/50"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-        <p className="text-sm text-zinc-500 truncate mt-1">{plugin.description || '暂无描述'}</p>
+            v{update.localVersion}→v{update.remoteVersion}
+          </span>
+        )}
+        {plugin.tags?.slice(0, 3).map((tag) => (
+          <span
+            key={tag}
+            className="hidden lg:inline px-2 py-0.5 text-xs font-medium bg-zinc-800/50 text-zinc-400 rounded border border-zinc-700/50 flex-shrink-0"
+          >
+            {tag}
+          </span>
+        ))}
+        <p className="hidden sm:block text-xs text-zinc-500 truncate">{plugin.description || '暂无描述'}</p>
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -290,21 +288,21 @@ function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
           <button
             onClick={handleUpdate}
             disabled={updating}
-            className="px-3 py-1.5 text-sm rounded-lg font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+            className="px-2.5 py-1 text-xs rounded-md font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
           >
             {updating ? '更新中...' : '更新'}
           </button>
         )}
         <Link
           href={`/skills/${plugin.name}`}
-          className="px-3 py-1.5 text-sm rounded-lg bg-zinc-800/50 text-zinc-300 border border-zinc-700 hover:bg-zinc-700/50 transition-colors"
+          className="px-2.5 py-1 text-xs rounded-md bg-zinc-800/50 text-zinc-300 border border-zinc-700 hover:bg-zinc-700/50 transition-colors"
         >
           查看
         </Link>
         <button
           onClick={handleDelete}
           disabled={deleting}
-          className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all duration-300 disabled:opacity-50 ${
+          className={`px-2.5 py-1 text-xs rounded-md font-medium transition-all duration-300 disabled:opacity-50 ${
             confirming
               ? 'bg-red-500 text-white hover:bg-red-600'
               : 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
@@ -315,7 +313,7 @@ function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
         {confirming && !deleting && (
           <button
             onClick={() => setConfirming(false)}
-            className="px-3 py-1.5 text-sm rounded-lg bg-zinc-800/50 text-zinc-400 border border-zinc-700 hover:bg-zinc-700/50 transition-colors"
+            className="px-2.5 py-1 text-xs rounded-md bg-zinc-800/50 text-zinc-400 border border-zinc-700 hover:bg-zinc-700/50 transition-colors"
           >
             取消
           </button>
