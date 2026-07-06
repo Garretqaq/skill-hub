@@ -60,6 +60,28 @@ export function writeMarketName(repoDir: string, name: string): void {
   }, `rename marketplace to ${name}`)
 }
 
+// 按 order（技能 name 列表）重排 plugins 并提交。
+// order 必须与现有 name 集合完全一致，否则抛错且不改动 manifest。
+export function reorderPlugins(repoDir: string, order: string[]): void {
+  const current = listPlugins(repoDir)
+  const names = current.map(p => p.name)
+  const sameSet =
+    order.length === names.length &&
+    new Set(order).size === order.length &&
+    order.every(n => names.includes(n))
+  if (!sameSet) throw new Error('order mismatch: 技能列表已变化，请刷新')
+
+  const byName = new Map(current.map(p => [p.name, p]))
+  const reordered = order.map(n => byName.get(n)!)
+  withWorkTree(repoDir, wt => {
+    const m = readMarketplace(repoDir)
+    m.plugins = reordered
+    const p = path.join(wt, '.claude-plugin', 'marketplace.json')
+    fs.mkdirSync(path.dirname(p), { recursive: true })
+    fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
+  }, 'reorder plugins')
+}
+
 export function getPluginDetail(repoDir: string, name: string): PluginDetail | null {
   const entry = listPlugins(repoDir).find(p => p.name === name)
   if (!entry) return null

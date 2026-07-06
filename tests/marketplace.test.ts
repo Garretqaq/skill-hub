@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
-import { readMarketplace, listPlugins, getPluginDetail, writeMarketName } from '@/lib/marketplace'
+import { readMarketplace, listPlugins, getPluginDetail, writeMarketName, reorderPlugins } from '@/lib/marketplace'
 
 interface SeedPlugin { name: string; skillBody?: string; readmeBody?: string; description?: string; rootReadmeBody?: string; noSkills?: boolean }
 
@@ -105,4 +105,26 @@ test('PluginEntry carries version', () => {
   execFileSync('git', ['commit', '-q', '-m', 'v'], { cwd: repo })
   fs.rmSync(wt, { recursive: true, force: true })
   expect(readMarketplace(repo).plugins[0].version).toBe('1.2.3')
+})
+
+test('reorderPlugins reorders plugins by given name order', () => {
+  const repo = seedNoCheckout([{ name: 'a' }, { name: 'b' }, { name: 'c' }])
+  reorderPlugins(repo, ['c', 'a', 'b'])
+  expect(listPlugins(repo).map(p => p.name)).toEqual(['c', 'a', 'b'])
+})
+
+test('reorderPlugins throws and leaves manifest unchanged on set mismatch', () => {
+  const repo = seedNoCheckout([{ name: 'a' }, { name: 'b' }])
+  expect(() => reorderPlugins(repo, ['a'])).toThrow()            // 缺项
+  expect(() => reorderPlugins(repo, ['a', 'b', 'x'])).toThrow()  // 多项
+  expect(() => reorderPlugins(repo, ['a', 'x'])).toThrow()       // 名称不符
+  expect(listPlugins(repo).map(p => p.name)).toEqual(['a', 'b']) // 顺序不变
+})
+
+test('reorderPlugins preserves entry fields', () => {
+  const repo = seedNoCheckout([{ name: 'a', description: 'da' }, { name: 'b', description: 'db' }])
+  reorderPlugins(repo, ['b', 'a'])
+  const plugins = listPlugins(repo)
+  expect(plugins.map(p => p.name)).toEqual(['b', 'a'])
+  expect(plugins.find(p => p.name === 'b')!.description).toBe('db')
 })
