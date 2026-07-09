@@ -9,14 +9,42 @@ import { isValidVersion, bumpPatch, compareVersions } from './semver'
 
 export interface IngestResult { name: string; type: 'plugin' | 'skill' }
 
+// 上游仓库里与插件运行无关、常撑大体积的顶层目录：预览时默认不勾选
+const EXCLUDE_HINTS = new Set(['node_modules', '.github', 'site', 'docs', 'tests', 'test', 'examples', 'fixtures', '.next', 'dist'])
+// 包的身份文件，永远导入
+const KEEP_ALWAYS = new Set(['.claude-plugin', 'SKILL.md'])
+
 export function toKebab(s: string): string {
   return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
-function copyDir(src: string, dest: string): void {
+function dirSize(p: string): number {
+  const st = fs.statSync(p)
+  if (!st.isDirectory()) return st.size
+  return fs.readdirSync(p).reduce((sum, n) => sum + dirSize(path.join(p, n)), 0)
+}
+
+export interface PreviewEntry { path: string; dir: boolean; size: number; suggested: boolean }
+
+/** 列出包根顶层条目 + 体积，供导入前勾选。suggested=false 表示命中黑名单，默认不勾。 */
+export function previewEntries(root: string): PreviewEntry[] {
+  return fs.readdirSync(root)
+    .filter(name => name !== '.git')
+    .map(name => ({
+      path: name,
+      dir: fs.statSync(path.join(root, name)).isDirectory(),
+      size: dirSize(path.join(root, name)),
+      suggested: KEEP_ALWAYS.has(name) || !EXCLUDE_HINTS.has(name),
+    }))
+    .sort((a, b) => b.size - a.size)
+}
+
+// exclude 只在包根第一层生效（top=true），避免递归误伤同名子目录
+function copyDir(src: string, dest: string, exclude?: Set<string>): void {
   fs.mkdirSync(dest, { recursive: true })
   for (const name of fs.readdirSync(src)) {
     if (name === '.git') continue // 跳过源克隆的 .git，避免目标成 gitlink
+    if (exclude?.has(name) && !KEEP_ALWAYS.has(name)) continue
     const s = path.join(src, name), d = path.join(dest, name)
     if (fs.statSync(s).isDirectory()) copyDir(s, d)
     else fs.copyFileSync(s, d)
@@ -68,7 +96,7 @@ function writeManifestEntry(repoDir: string, wt: string, entry: PluginEntry): vo
   fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
 }
 
-export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string; description?: string; displayName?: string; origin?: string }): IngestResult {
+export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string; description?: string; displayName?: string; origin?: string; exclude?: string[] }): IngestResult {
   const found = findRoot(extractedDir)
   if (!found) throw new Error('unrecognized package: no plugin.json or SKILL.md')
 
@@ -122,12 +150,13 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
 
   const finalDescription = description
   const finalVersion = version
+  const exclude = opts?.exclude?.length ? new Set(opts.exclude) : undefined
   withWorkTree(repoDir, wt => {
     const dest = path.join(wt, 'plugins', name)
     if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true }) // 覆盖：删 work-tree 里旧目录
 
     if (found.kind === 'plugin') {
-      copyDir(found.root, dest)
+      copyDir(found.root, dest, exclude)
       const pjPath = path.join(dest, '.claude-plugin', 'plugin.json')
       const pj = JSON.parse(fs.readFileSync(pjPath, 'utf8'))
       pj.version = finalVersion
@@ -135,7 +164,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
       fs.writeFileSync(pjPath, JSON.stringify(pj, null, 2) + '\n')
     } else {
       const skillDir = path.join(dest, 'skills', name)
-      copyDir(found.root, skillDir)
+      copyDir(found.root, skillDir, exclude)
       fs.mkdirSync(path.join(dest, '.claude-plugin'), { recursive: true })
       fs.writeFileSync(
         path.join(dest, '.claude-plugin', 'plugin.json'),

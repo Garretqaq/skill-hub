@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import type { WatchedRepo, IndexedPackage } from '@/lib/watched'
+import type { PreviewEntry } from '@/lib/ingest'
 import { groupPackagesByRepo } from '@/lib/packageGroup'
 import { isValidVersion, compareVersions } from '@/lib/semver'
 import { useToast } from '@/lib/useToast'
@@ -35,6 +36,15 @@ function sourceLabel(source: string): string {
   try { return new URL(source).host } catch { return 'git' }
 }
 
+// 包身份文件恒被导入，弹窗里锁定勾选（与 ingest.ts 的 KEEP_ALWAYS 对齐）
+const KEEP_ALWAYS = new Set(['.claude-plugin', 'SKILL.md'])
+
+function humanSize(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
 // 有更新：已导入本地，且远程与本地版本均合法、远程更高
 function hasUpdate(pkg: IndexedPackage): boolean {
   return pkg.localVersion != null && !!pkg.version
@@ -48,6 +58,7 @@ export default function RemoteRepos() {
   const [source, setSource] = useState('')
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState<string | null>(null) // 当前进行中的动作标识
+  const [preview, setPreview] = useState<{ pkg: IndexedPackage; entries: PreviewEntry[]; checked: Set<string> } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set()) // 用户手动展开的组（repoId）
   const { toasts, hideToast, success, error, info } = useToast()
 
@@ -130,14 +141,35 @@ export default function RemoteRepos() {
     } finally { setBusy(null) }
   }
 
-  const doImport = async (pkg: IndexedPackage) => {
+  // 导入前先拉包根顶层清单，让用户勾掉官网/文档/测试夹具等无关大目录
+  const openPreview = async (pkg: IndexedPackage) => {
+    setBusy(`import:${pkg.repoId}:${pkg.name}`)
+    try {
+      const qs = new URLSearchParams({ id: pkg.repoId, name: pkg.name })
+      if (pkg.sourceUrl) qs.set('sourceUrl', pkg.sourceUrl) // 引用型包需临时克隆才能列目录
+      const res = await fetch(`/api/watched/preview?${qs}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { error(`读取包内容失败: ${data.error || res.statusText}`); return }
+      const entries: PreviewEntry[] = data.entries
+      setPreview({ pkg, entries, checked: new Set(entries.filter(e => e.suggested).map(e => e.path)) })
+    } finally { setBusy(null) }
+  }
+
+  const confirmImport = async () => {
+    if (!preview) return
+    const { pkg, entries, checked } = preview
     setBusy(`import:${pkg.repoId}:${pkg.name}`)
     try {
       const res = await fetch('/api/watched/import', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: pkg.repoId, name: pkg.name, sourceUrl: pkg.sourceUrl /* 引用型包会有 sourceUrl，本地包为 undefined（API 会忽略） */ }),
+        body: JSON.stringify({
+          id: pkg.repoId, name: pkg.name,
+          sourceUrl: pkg.sourceUrl, // 引用型包会有 sourceUrl，本地包为 undefined（API 会忽略）
+          exclude: entries.filter(e => !checked.has(e.path)).map(e => e.path),
+        }),
       })
       if (!res.ok) { error(`${pkg.localVersion ? '更新' : '导入'}失败: ${await res.text()}`); return }
+      setPreview(null)
       success(`已${pkg.localVersion ? '更新' : '导入'} ${pkg.name}${pkg.localVersion ? '' : ' 到本市场'}`)
       await load(q) // 刷新 localVersion，按钮切到「更新」/置灰
     } finally { setBusy(null) }
@@ -285,7 +317,7 @@ export default function RemoteRepos() {
                               <span className="text-xs text-zinc-500 truncate">{pkg.source}</span>
                               {imported ? (
                                 <button
-                                  onClick={() => doImport(pkg)}
+                                  onClick={() => openPreview(pkg)}
                                   disabled={busyKey || !canUpdate}
                                   title={canUpdate ? `更新到 ${pkg.version}` : `已是最新版本 ${pkg.localVersion}`}
                                   className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -294,7 +326,7 @@ export default function RemoteRepos() {
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => doImport(pkg)}
+                                  onClick={() => openPreview(pkg)}
                                   disabled={busyKey}
                                   title={isReference ? '将自动从远程克隆导入' : ''}
                                   className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -323,6 +355,56 @@ export default function RemoteRepos() {
           </div>
         )}
       </div>
+
+      {/* 导入内容勾选 */}
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPreview(null)}>
+          <div className="w-full max-w-lg max-h-[80vh] flex flex-col bg-zinc-900 border border-zinc-800 rounded-xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-zinc-800">
+              <h3 className="text-lg font-bold text-zinc-100">选择导入内容</h3>
+              <p className="text-sm text-zinc-500 mt-1">
+                {preview.pkg.name} · 已自动取消勾选官网、文档、测试等与插件运行无关的目录
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto divide-y divide-zinc-800/60">
+              {preview.entries.map(e => {
+                const locked = KEEP_ALWAYS.has(e.path)
+                return (
+                  <label key={e.path} className={`flex items-center gap-3 px-5 py-2.5 ${locked ? 'opacity-60' : 'cursor-pointer hover:bg-zinc-800/30'}`}>
+                    <input
+                      type="checkbox" disabled={locked} checked={preview.checked.has(e.path)}
+                      onChange={() => setPreview(p => {
+                        if (!p) return p
+                        const checked = new Set(p.checked)
+                        if (checked.has(e.path)) checked.delete(e.path); else checked.add(e.path)
+                        return { ...p, checked }
+                      })}
+                      className="w-4 h-4 accent-cyan-500"
+                    />
+                    <span className="font-mono text-sm text-zinc-300 truncate">{e.path}{e.dir ? '/' : ''}</span>
+                    <span className="ml-auto text-xs text-zinc-500 flex-shrink-0">{humanSize(e.size)}</span>
+                  </label>
+                )
+              })}
+            </div>
+            <div className="flex items-center gap-3 p-5 border-t border-zinc-800">
+              <span className="text-sm text-zinc-400">
+                预计导入 {humanSize(preview.entries.filter(e => preview.checked.has(e.path)).reduce((s, e) => s + e.size, 0))}
+              </span>
+              <button onClick={() => setPreview(null)} className="ml-auto px-4 py-2 text-sm rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors">
+                取消
+              </button>
+              <button
+                onClick={confirmImport}
+                disabled={busy === `import:${preview.pkg.repoId}:${preview.pkg.name}`}
+                className="px-4 py-2 text-sm rounded-lg bg-cyan-500 text-white font-medium hover:bg-cyan-600 disabled:opacity-50 transition-colors"
+              >
+                {busy === `import:${preview.pkg.repoId}:${preview.pkg.name}` ? '导入中...' : '确认导入'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast 通知 */}
       {toasts.map(toast => (

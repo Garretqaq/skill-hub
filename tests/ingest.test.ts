@@ -4,7 +4,7 @@ import { expect, test } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { ingest } from '@/lib/ingest'
+import { ingest, previewEntries } from '@/lib/ingest'
 import { readMarketplace } from '@/lib/marketplace'
 
 function tmp(): string {
@@ -207,4 +207,58 @@ test('ingest 无 origin 时 manifest origin 为 undefined（本地上传）', ()
   const repo = seedRepo()
   ingest(repo, mkSkill('local', 'body', '1.0.0'))
   expect(readMarketplace(repo).plugins[0].origin).toBeUndefined()
+})
+
+// 构造带官网/文档等冗余目录的插件源
+function mkFatPlugin(): string {
+  const src = tmp()
+  const root = path.join(src, 'fat')
+  fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'fat', description: 'F', version: '1.0.0' }))
+  fs.mkdirSync(path.join(root, 'skills/a'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'skills/a/SKILL.md'), '---\nname: a\n---\nx')
+  fs.mkdirSync(path.join(root, 'site/public'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'site/public/hero.png'), 'x'.repeat(2048))
+  fs.mkdirSync(path.join(root, 'docs'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'docs/guide.md'), 'g')
+  return src
+}
+function treeHas(repo: string, p: string): boolean {
+  const out = execFileSync('git', ['-C', repo, 'ls-tree', 'HEAD', '--', p]).toString()
+  return out.trim().length > 0
+}
+
+test('ingest exclude 剔除包根顶层目录', () => {
+  const repo = seedRepo()
+  ingest(repo, mkFatPlugin(), { exclude: ['site', 'docs'] })
+  expect(treeHas(repo, 'plugins/fat/skills/a/SKILL.md')).toBe(true)
+  expect(treeHas(repo, 'plugins/fat/.claude-plugin/plugin.json')).toBe(true)
+  expect(treeHas(repo, 'plugins/fat/site')).toBe(false)
+  expect(treeHas(repo, 'plugins/fat/docs')).toBe(false)
+})
+
+test('ingest 不传 exclude 时全量导入（行为不变）', () => {
+  const repo = seedRepo()
+  ingest(repo, mkFatPlugin())
+  expect(treeHas(repo, 'plugins/fat/site/public/hero.png')).toBe(true)
+  expect(treeHas(repo, 'plugins/fat/docs/guide.md')).toBe(true)
+})
+
+test('ingest exclude 不能剔除包身份文件', () => {
+  const repo = seedRepo()
+  ingest(repo, mkFatPlugin(), { exclude: ['.claude-plugin', 'site'] })
+  expect(treeHas(repo, 'plugins/fat/.claude-plugin/plugin.json')).toBe(true)
+})
+
+test('previewEntries 标记黑名单目录为不建议导入', () => {
+  const root = path.join(mkFatPlugin(), 'fat')
+  const entries = previewEntries(root)
+  const by = Object.fromEntries(entries.map(e => [e.path, e]))
+  expect(by['site'].suggested).toBe(false)
+  expect(by['docs'].suggested).toBe(false)
+  expect(by['skills'].suggested).toBe(true)
+  expect(by['.claude-plugin'].suggested).toBe(true)
+  expect(by['site'].size).toBeGreaterThan(2000) // 递归统计目录体积
+  expect(entries[0].path).toBe('site') // 按体积降序
 })

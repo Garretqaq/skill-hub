@@ -12,8 +12,9 @@ import { packageRoot, cloneInto, listWatched } from '@/lib/watched'
 
 export async function POST(req: NextRequest) {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const { id, name, sourceUrl } = await req.json().catch(() => ({}))
+  const { id, name, sourceUrl, exclude } = await req.json().catch(() => ({}))
   if (!id || !name) return NextResponse.json({ error: 'id and name required' }, { status: 400 })
+  const excludeList = Array.isArray(exclude) ? exclude.map(String) : undefined
 
   // 来源仓库：本地包记监听库 source，引用型包记其外部 sourceUrl
   const watched = listWatched().find(r => r.id === String(id))
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
       // 导入（同本地包流程）
       syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
       const before = headOf()
-      const res = ingest(REPO_DIR, pkg.root, { overwrite: true, origin })
+      const res = ingest(REPO_DIR, pkg.root, { overwrite: true, origin, exclude: excludeList })
       try {
         push()
       } catch (e) {
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
   syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
   const before = headOf()
   try {
-    const res = ingest(REPO_DIR, root, { overwrite: true, origin })
+    const res = ingest(REPO_DIR, root, { overwrite: true, origin, exclude: excludeList })
     try {
       push()
     } catch (e) {
