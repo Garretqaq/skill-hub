@@ -8,8 +8,12 @@ export async function POST(req: NextRequest) {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const { id } = await req.json().catch(() => ({}))
   try {
-    if (id) await refreshWatched(String(id)); else await refreshAll()
-    return NextResponse.json({ ok: true })
+    if (id) {
+      await refreshWatched(String(id))
+      return NextResponse.json({ total: 1, ok: 1, failed: [] })
+    }
+    const result = await refreshAll()
+    return NextResponse.json({ ...result, failed: result.failed.map(stripCreds) })
   } catch (e) {
     return NextResponse.json({ error: stripCreds(String(e)) }, { status: 500 })
   }

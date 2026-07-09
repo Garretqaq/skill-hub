@@ -222,8 +222,11 @@ test('refreshAll 容错：单个失败不影响其余，全部尝试后抛聚合
   execFileSync('git', ['add', '-A'], { cwd: remote })
   execFileSync('git', ['commit', '-q', '-m', 'add beta'], { cwd: remote })
 
-  // refreshAll 应该抛聚合错误
-  await expect(refreshAll()).rejects.toThrow(/refresh failed/)
+  // refreshAll 返回计数：坏库计入 failed，不影响其余
+  const r = await refreshAll()
+  expect(r).toMatchObject({ total: 2, ok: 1 })
+  expect(r.failed).toHaveLength(1)
+  expect(r.failed[0]).toContain('fake')
 
   // 但 validId 应该已经刷新成功
   const { buildIndex } = await import('@/lib/watched')

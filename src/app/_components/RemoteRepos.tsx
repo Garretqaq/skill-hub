@@ -35,6 +35,13 @@ function sourceLabel(source: string): string {
   try { return new URL(source).host } catch { return 'git' }
 }
 
+// 有更新：已导入本地，且远程与本地版本均合法、远程更高
+function hasUpdate(pkg: IndexedPackage): boolean {
+  return pkg.localVersion != null && !!pkg.version
+    && isValidVersion(pkg.version) && isValidVersion(pkg.localVersion)
+    && compareVersions(pkg.version, pkg.localVersion) > 0
+}
+
 export default function RemoteRepos() {
   const [repos, setRepos] = useState<WatchedRow[]>([])
   const [results, setResults] = useState<IndexedPackage[]>([])
@@ -107,11 +114,19 @@ export default function RemoteRepos() {
   const refresh = async (id?: string) => {
     setBusy(id ? `refresh:${id}` : 'refresh:all')
     try {
-      await fetch('/api/watched/refresh', {
+      const res = await fetch('/api/watched/refresh', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(id ? { id } : {}),
       })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { error(`刷新失败: ${data.error || res.statusText}`); return }
       await load(q)
+      if (id) success('已刷新 1 个仓库')
+      else if (data.total === 0) info('没有监听仓库可刷新')
+      else success(`已刷新 ${data.ok}/${data.total} 个仓库`)
+      if (data.failed?.length) error(`${data.failed.length} 个仓库刷新失败:\n${data.failed.join('\n')}`)
+    } catch (e) {
+      error(`刷新失败: ${e}`)
     } finally { setBusy(null) }
   }
 
@@ -229,6 +244,7 @@ export default function RemoteRepos() {
           <div className="space-y-3">
             {groups.map((group) => {
               const isOpen = hasQuery || expanded.has(group.repoId)
+              const updatable = group.items.filter(hasUpdate).length
               return (
                 <div key={group.repoId} className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-900/40">
                   <button
@@ -239,7 +255,12 @@ export default function RemoteRepos() {
                       {sourceLabel(group.source)}
                     </span>
                     <span className="font-mono text-sm text-zinc-300 truncate">{group.source}</span>
-                    <span className="ml-auto text-xs text-zinc-500 flex-shrink-0">{group.items.length} 个技能</span>
+                    {updatable > 0 && (
+                      <span className="ml-auto px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 rounded border border-emerald-500/30 whitespace-nowrap flex-shrink-0">
+                        {updatable} 个可更新
+                      </span>
+                    )}
+                    <span className={`text-xs text-zinc-500 flex-shrink-0 ${updatable > 0 ? '' : 'ml-auto'}`}>{group.items.length} 个技能</span>
                     <svg
                       className={`w-4 h-4 text-zinc-500 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
                       fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -253,9 +274,7 @@ export default function RemoteRepos() {
                         const isReference = !!pkg.sourceUrl // 引用型包判定
                         const imported = pkg.localVersion != null // 已导入本地市场
                         const busyKey = busy === `import:${pkg.repoId}:${pkg.name}`
-                        // 有更新：远程与本地版本均合法且远程更高
-                        const hasUpdate = imported && !!pkg.version && isValidVersion(pkg.version)
-                          && isValidVersion(pkg.localVersion!) && compareVersions(pkg.version, pkg.localVersion!) > 0
+                        const canUpdate = hasUpdate(pkg)
                         return (
                           <div key={`${pkg.repoId}:${pkg.name}`} className="p-4 space-y-2">
                             <div className="flex items-center gap-3">
@@ -267,8 +286,8 @@ export default function RemoteRepos() {
                               {imported ? (
                                 <button
                                   onClick={() => doImport(pkg)}
-                                  disabled={busyKey || !hasUpdate}
-                                  title={hasUpdate ? `更新到 ${pkg.version}` : `已是最新版本 ${pkg.localVersion}`}
+                                  disabled={busyKey || !canUpdate}
+                                  title={canUpdate ? `更新到 ${pkg.version}` : `已是最新版本 ${pkg.localVersion}`}
                                   className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 >
                                   {busyKey ? '更新中' : '更新'}

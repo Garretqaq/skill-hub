@@ -21,6 +21,8 @@ export interface IndexedPackage {
   localVersion?: string // 已导入本地市场的版本；未导入为 undefined
 }
 
+export interface RefreshResult { total: number; ok: number; failed: string[] }
+
 export { groupPackagesByRepo } from './packageGroup'
 export type { PackageGroup } from './packageGroup'
 
@@ -151,16 +153,16 @@ export async function refreshWatched(id: string): Promise<void> {
   invalidateIndex()
 }
 
-// 全部刷新：库间并行（上限 6），单个失败不影响其余；全部尝试后抛聚合错误
-export async function refreshAll(): Promise<void> {
+// 全部刷新：库间并行（上限 6），单个失败不影响其余；返回计数供前端反馈
+export async function refreshAll(): Promise<RefreshResult> {
   const repos = readAll()
-  const errs: string[] = []
+  const failed: string[] = []
   const tasks = repos.map(r => async () => {
-    try { await refreshOne(r.id) } catch (e) { errs.push(`${r.id}: ${String(e)}`) }
+    try { await refreshOne(r.id) } catch (e) { failed.push(`${r.source}: ${String(e)}`) }
   })
   await runPool(tasks, 6)
   invalidateIndex()
-  if (errs.length) throw new Error(`refresh failed:\n${errs.join('\n')}`)
+  return { total: repos.length, ok: repos.length - failed.length, failed }
 }
 
 function marketNameOf(id: string): string | null {

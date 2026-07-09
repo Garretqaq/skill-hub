@@ -75,7 +75,7 @@ export default function Toast({ message, type, onClose }: ToastProps) {
     >
       <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${style.bg} ${style.border} ${style.text} shadow-xl backdrop-blur-sm min-w-[320px] max-w-md`}>
         <div className="flex-shrink-0">{style.icon}</div>
-        <p className="flex-1 text-sm font-medium">{message}</p>
+        <p className="flex-1 text-sm font-medium whitespace-pre-line">{message}</p>
         <button
           onClick={() => {
             setVisible(false)
