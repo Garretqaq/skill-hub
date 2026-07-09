@@ -262,3 +262,40 @@ test('previewEntries 标记黑名单目录为不建议导入', () => {
   expect(by['site'].size).toBeGreaterThan(2000) // 递归统计目录体积
   expect(entries[0].path).toBe('site') // 按体积降序
 })
+
+test('ingest 更新时沿用上次的 exclude（无需重新勾选）', () => {
+  const repo = seedRepo()
+  ingest(repo, mkFatPlugin(), { exclude: ['site', 'docs'] })
+  expect(readMarketplace(repo).plugins[0].exclude).toEqual(['site', 'docs'])
+
+  // 更新：不传 exclude，应复用 manifest 里记录的勾选
+  ingest(repo, mkFatPlugin(), { overwrite: true })
+  expect(treeHas(repo, 'plugins/fat/site')).toBe(false)
+  expect(treeHas(repo, 'plugins/fat/docs')).toBe(false)
+  expect(treeHas(repo, 'plugins/fat/skills/a/SKILL.md')).toBe(true)
+  expect(readMarketplace(repo).plugins[0].exclude).toEqual(['site', 'docs'])
+})
+
+test('ingest 更新时显式传 exclude 可覆盖旧勾选', () => {
+  const repo = seedRepo()
+  ingest(repo, mkFatPlugin(), { exclude: ['site', 'docs'] })
+  ingest(repo, mkFatPlugin(), { overwrite: true, exclude: ['site'] })
+  expect(treeHas(repo, 'plugins/fat/docs/guide.md')).toBe(true) // docs 重新纳入
+  expect(treeHas(repo, 'plugins/fat/site')).toBe(false)
+  expect(readMarketplace(repo).plugins[0].exclude).toEqual(['site'])
+})
+
+test('ingest 更新时传空 exclude 表示全量导入', () => {
+  const repo = seedRepo()
+  ingest(repo, mkFatPlugin(), { exclude: ['site', 'docs'] })
+  ingest(repo, mkFatPlugin(), { overwrite: true, exclude: [] })
+  expect(treeHas(repo, 'plugins/fat/site/public/hero.png')).toBe(true)
+  expect(readMarketplace(repo).plugins[0].exclude).toBeUndefined()
+})
+
+test('ingest 更新保留 origin 的行为不受 exclude 改动影响', () => {
+  const repo = seedRepo()
+  ingest(repo, mkFatPlugin(), { origin: 'o/r', exclude: ['site'] })
+  ingest(repo, mkFatPlugin(), { overwrite: true })
+  expect(readMarketplace(repo).plugins[0].origin).toBe('o/r')
+})

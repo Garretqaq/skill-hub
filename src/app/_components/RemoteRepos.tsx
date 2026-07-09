@@ -141,8 +141,29 @@ export default function RemoteRepos() {
     } finally { setBusy(null) }
   }
 
-  // 导入前先拉包根顶层清单，让用户勾掉官网/文档/测试夹具等无关大目录
-  const openPreview = async (pkg: IndexedPackage) => {
+  // exclude 省略时后端沿用上次导入的勾选结果
+  const doImport = async (pkg: IndexedPackage, exclude?: string[]) => {
+    setBusy(`import:${pkg.repoId}:${pkg.name}`)
+    try {
+      const res = await fetch('/api/watched/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: pkg.repoId, name: pkg.name,
+          sourceUrl: pkg.sourceUrl, // 引用型包会有 sourceUrl，本地包为 undefined（API 会忽略）
+          exclude,
+        }),
+      })
+      if (!res.ok) { error(`${pkg.localVersion ? '更新' : '导入'}失败: ${await res.text()}`); return }
+      setPreview(null)
+      success(`已${pkg.localVersion ? '更新' : '导入'} ${pkg.name}${pkg.localVersion ? '' : ' 到本市场'}`)
+      await load(q) // 刷新 localVersion，按钮切到「更新」/置灰
+    } finally { setBusy(null) }
+  }
+
+  // 首次导入弹窗勾选；更新沿用上次的勾选，直接导入
+  const startImport = async (pkg: IndexedPackage) => {
+    if (pkg.localVersion != null) return doImport(pkg)
+
     setBusy(`import:${pkg.repoId}:${pkg.name}`)
     try {
       const qs = new URLSearchParams({ id: pkg.repoId, name: pkg.name })
@@ -155,24 +176,10 @@ export default function RemoteRepos() {
     } finally { setBusy(null) }
   }
 
-  const confirmImport = async () => {
+  const confirmImport = () => {
     if (!preview) return
     const { pkg, entries, checked } = preview
-    setBusy(`import:${pkg.repoId}:${pkg.name}`)
-    try {
-      const res = await fetch('/api/watched/import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: pkg.repoId, name: pkg.name,
-          sourceUrl: pkg.sourceUrl, // 引用型包会有 sourceUrl，本地包为 undefined（API 会忽略）
-          exclude: entries.filter(e => !checked.has(e.path)).map(e => e.path),
-        }),
-      })
-      if (!res.ok) { error(`${pkg.localVersion ? '更新' : '导入'}失败: ${await res.text()}`); return }
-      setPreview(null)
-      success(`已${pkg.localVersion ? '更新' : '导入'} ${pkg.name}${pkg.localVersion ? '' : ' 到本市场'}`)
-      await load(q) // 刷新 localVersion，按钮切到「更新」/置灰
-    } finally { setBusy(null) }
+    return doImport(pkg, entries.filter(e => !checked.has(e.path)).map(e => e.path))
   }
 
   return (
@@ -317,7 +324,7 @@ export default function RemoteRepos() {
                               <span className="text-xs text-zinc-500 truncate">{pkg.source}</span>
                               {imported ? (
                                 <button
-                                  onClick={() => openPreview(pkg)}
+                                  onClick={() => startImport(pkg)}
                                   disabled={busyKey || !canUpdate}
                                   title={canUpdate ? `更新到 ${pkg.version}` : `已是最新版本 ${pkg.localVersion}`}
                                   className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -326,7 +333,7 @@ export default function RemoteRepos() {
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => openPreview(pkg)}
+                                  onClick={() => startImport(pkg)}
                                   disabled={busyKey}
                                   title={isReference ? '将自动从远程克隆导入' : ''}
                                   className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -361,7 +368,30 @@ export default function RemoteRepos() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPreview(null)}>
           <div className="w-full max-w-lg max-h-[80vh] flex flex-col bg-zinc-900 border border-zinc-800 rounded-xl" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-zinc-800">
-              <h3 className="text-lg font-bold text-zinc-100">选择导入内容</h3>
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-bold text-zinc-100">选择导入内容</h3>
+                <div className="ml-auto flex gap-2 text-xs">
+                  <button
+                    onClick={() => setPreview(p => p && { ...p, checked: new Set(p.entries.map(e => e.path)) })}
+                    className="px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                  >
+                    全选
+                  </button>
+                  <button
+                    // 身份文件恒选中，取消全选时保留
+                    onClick={() => setPreview(p => p && { ...p, checked: new Set(p.entries.map(e => e.path).filter(n => KEEP_ALWAYS.has(n))) })}
+                    className="px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                  >
+                    取消全选
+                  </button>
+                  <button
+                    onClick={() => setPreview(p => p && { ...p, checked: new Set(p.entries.filter(e => e.suggested).map(e => e.path)) })}
+                    className="px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                  >
+                    恢复推荐
+                  </button>
+                </div>
+              </div>
               <p className="text-sm text-zinc-500 mt-1">
                 {preview.pkg.name} · 已自动取消勾选官网、文档、测试等与插件运行无关的目录
               </p>

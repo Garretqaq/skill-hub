@@ -150,7 +150,10 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
 
   const finalDescription = description
   const finalVersion = version
-  const exclude = opts?.exclude?.length ? new Set(opts.exclude) : undefined
+  // 覆盖导入时沿用上次的 exclude（若本次未显式提供），更新无需重新勾选
+  const prevEntry = existed ? readMarketplace(repoDir).plugins.find(x => x.name === name) : undefined
+  const finalExclude = opts?.exclude ?? prevEntry?.exclude
+  const exclude = finalExclude?.length ? new Set(finalExclude) : undefined
   withWorkTree(repoDir, wt => {
     const dest = path.join(wt, 'plugins', name)
     if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true }) // 覆盖：删 work-tree 里旧目录
@@ -172,8 +175,6 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
       )
     }
 
-    // 覆盖导入时保留原 origin（若本次未显式提供）：读现有条目的 origin 作兜底
-    const prevOrigin = existed ? readMarketplace(repoDir).plugins.find(x => x.name === name)?.origin : undefined
     writeManifestEntry(repoDir, wt, {
       name,
       source: `./plugins/${name}`,
@@ -181,7 +182,8 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
       tags,
       version: finalVersion,
       displayName: opts?.displayName?.trim() || undefined,
-      origin: opts?.origin?.trim() || prevOrigin,
+      origin: opts?.origin?.trim() || prevEntry?.origin, // 覆盖导入时保留原 origin
+      exclude: finalExclude?.length ? finalExclude : undefined,
     })
   }, `${opts?.overwrite ? 'update' : 'add'} ${name}`)
 
