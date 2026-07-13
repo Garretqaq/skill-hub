@@ -21,6 +21,7 @@ function parseOwnerRepo(url: string): { owner: string; repo: string } | null {
 export default function InstallCommands({ market, repoUrl, name }: InstallCommandsProps) {
   const [copied, setCopied] = useState<string | null>(null)
   const [origin, setOrigin] = useState('') // 客户端挂载后取，SSR 阶段为空
+  const [client, setClient] = useState<'claude' | 'codex'>('claude')
 
   useEffect(() => setOrigin(window.location.origin), [])
 
@@ -28,7 +29,18 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
   // 末尾带 .git：Claude Code 据此识别为 git 源走 clone；否则会当 HTTP-JSON 端点直接 fetch 报 schema 错
   const proxyUrl = origin && or ? `${origin}/proxy/${or.owner}/${or.repo}.git` : ''
 
-  const installCmd = `/plugin install ${name}@${market}`
+  // 各客户端命令串：同结构动态生成，仅前缀/子命令/flag 不同
+  const cmds = client === 'claude'
+    ? {
+        install: `/plugin install ${name}@${market}`,
+        addDirect: `/plugin marketplace add ${repoUrl}`,
+        addProxy: `/plugin marketplace add ${proxyUrl}`,
+      }
+    : {
+        install: `codex plugin add ${name}@${market} --json`,
+        addDirect: `codex plugin marketplace add ${repoUrl}`,
+        addProxy: `codex plugin marketplace add ${proxyUrl}`,
+      }
 
   const copyToClipboard = async (text: string, id: string) => {
     try {
@@ -76,10 +88,27 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
         安装命令
       </h3>
 
+      {/* 客户端切换：Claude Code / Codex */}
+      <div className="flex gap-2">
+        {(['claude', 'codex'] as const).map((c) => (
+          <button
+            key={c}
+            onClick={() => setClient(c)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all duration-200 ${
+              client === c
+                ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-300'
+                : 'bg-zinc-900/30 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+            }`}
+          >
+            {c === 'claude' ? 'Claude Code' : 'Codex'}
+          </button>
+        ))}
+      </div>
+
       {/* 安装技能：最常用，置顶常显 */}
       <div className="space-y-2">
         <div className="text-xs text-zinc-500 font-medium">安装技能</div>
-        {cmdRow(installCmd, 'install')}
+        {cmdRow(cmds.install, 'install')}
       </div>
 
       {/* 添加市场：一次性步骤，默认折叠。已添加过市场源的可跳过 */}
@@ -94,12 +123,12 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
         <div className="px-4 pb-4 pt-1 space-y-3">
           <div className="space-y-2">
             <div className="text-xs text-zinc-500 font-medium">直连（GitHub）</div>
-            {cmdRow(`/plugin marketplace add ${repoUrl}`, 'add-direct')}
+            {cmdRow(cmds.addDirect, 'add-direct')}
           </div>
           {proxyUrl && (
             <div className="space-y-2">
               <div className="text-xs text-zinc-500 font-medium">代理加速（国内网络更快）</div>
-              {cmdRow(`/plugin marketplace add ${proxyUrl}`, 'add-proxy')}
+              {cmdRow(cmds.addProxy, 'add-proxy')}
             </div>
           )}
         </div>
