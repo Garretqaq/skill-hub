@@ -105,6 +105,13 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
         ))}
       </div>
 
+      {/* 执行环境提示：claude 在会话内执行，codex 在终端直接执行 */}
+      <div className="text-xs text-zinc-500 leading-relaxed">
+        {client === 'claude'
+          ? '先运行 claude 启动会话，再在会话内执行下列斜杠命令。'
+          : '在终端直接执行下列命令，无需先启动 codex。'}
+      </div>
+
       {/* 安装技能：最常用，置顶常显 */}
       <div className="space-y-2">
         <div className="text-xs text-zinc-500 font-medium">安装技能</div>
