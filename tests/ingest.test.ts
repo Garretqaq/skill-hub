@@ -125,6 +125,13 @@ test('overwrite with empty version bumps patch', () => {
   expect(pkgField(repo, 'a', 'version')).toBe('1.0.1')
 })
 
+test('overwrite adopts higher upstream package version (watched update)', () => {
+  const repo = seedRepo()
+  ingest(repo, mkSkill('a', 'v1', '2.6.5'))
+  ingest(repo, mkSkill('a', 'v2', '2.11.0'), { overwrite: true })
+  expect(pkgField(repo, 'a', 'version')).toBe('2.11.0')
+})
+
 test('overwrite with higher form version uses it', () => {
   const repo = seedRepo()
   ingest(repo, mkSkill('a', 'v1'))

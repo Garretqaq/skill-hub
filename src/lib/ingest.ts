@@ -139,7 +139,9 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
   let version: string
   if (existed) {
     const base = currentVersion && isValidVersion(currentVersion) ? currentVersion : '1.0.0'
-    version = opts?.version || bumpPatch(base)
+    const fromPkg = pkgVersion && isValidVersion(pkgVersion) ? pkgVersion : ''
+    // 上游版本比当前高就直接采用（监听仓库更新场景，如 2.6.5→2.11.0），否则自增 patch（重复导入同版本）
+    version = opts?.version || (fromPkg && compareVersions(fromPkg, base) > 0 ? fromPkg : bumpPatch(base))
     if (compareVersions(version, base) <= 0) {
       throw new Error(`version must be higher than current: ${version} <= ${base}`)
     }
