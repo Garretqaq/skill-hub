@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { discoverPackages } from './ingest'
 import { normalizeSource } from './remote'
-import { listPlugins } from './marketplace'
+import { listPlugins, type PluginEntry } from './marketplace'
 import { isValidVersion, compareVersions } from './semver'
 import { DATA_DIR, REPO_DIR } from './config'
 import { withWorkTree } from './worktree'
@@ -18,7 +18,9 @@ export interface IndexedPackage {
   name: string; kind: 'plugin' | 'skill'; description: string
   sourceUrl?: string  // 引用型包的外部 git URL（本地包为 undefined）
   version?: string    // 源包声明的版本，缺失为 undefined
+  contentHash?: string // 源包目录内容哈希（本地文件包）；引用型包为 undefined
   localVersion?: string // 已导入本地市场的版本；未导入为 undefined
+  localSourceHash?: string // 已导入本地市场记录的导入时源哈希；未导入为 undefined
 }
 
 export interface RefreshResult { total: number; ok: number; failed: string[] }
@@ -196,7 +198,8 @@ export function buildIndex(): IndexedPackage[] {
         kind: pkg.kind,
         description: pkg.description,
         sourceUrl: pkg.sourceUrl,  // 新增
-        version: pkg.version
+        version: pkg.version,
+        contentHash: pkg.contentHash,
       })
     }
   }
@@ -204,18 +207,21 @@ export function buildIndex(): IndexedPackage[] {
   return out
 }
 
-// 本地市场已导入包的 name→version（现算 repoDir，理由同 updateStatus 注释）
-function localVersionMap(): Map<string, string> {
+// 本地市场已导入包的 name→entry（现算 repoDir，理由同 updateStatus 注释）
+function localEntryMap(): Map<string, PluginEntry> {
   const repoDir = REPO_DIR
-  const map = new Map<string, string>()
-  for (const p of listPlugins(repoDir)) if (p.version) map.set(p.name, p.version)
+  const map = new Map<string, PluginEntry>()
+  for (const p of listPlugins(repoDir)) map.set(p.name, p)
   return map
 }
 
 export function search(q: string): IndexedPackage[] {
   const kw = q.trim().toLowerCase()
-  const local = localVersionMap()
-  const all = buildIndex().map(p => ({ ...p, localVersion: local.get(p.name) }))
+  const local = localEntryMap()
+  const all = buildIndex().map(p => {
+    const lp = local.get(p.name)
+    return { ...p, localVersion: lp?.version, localSourceHash: lp?.sourceHash }
+  })
   if (!kw) return all
   return all.filter(p => p.name.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw))
 }
@@ -235,9 +241,10 @@ export interface UpdateItem {
   repoId: string
   source: string
   sourceUrl?: string
+  reason: 'version' | 'content'  // version：语义版本更高；content：无版本时内容哈希不同
 }
 
-// 已导入包 vs 监听库聚合索引，按 name 比对 version，仅返回远程版本更高者
+// 已导入包 vs 监听库聚合索引。两侧都有合法版本时按 version 比对；否则用内容哈希兜底。
 export function updateStatus(): UpdateItem[] {
   // ponytail: 不复用 config.ts 的 REPO_DIR 常量——它在模块加载时计算一次，
   // 而本文件其余路径（storeFile/cacheRoot 等）均按调用时的 cwd 现算，测试靠 chdir 隔离；
@@ -245,23 +252,38 @@ export function updateStatus(): UpdateItem[] {
   const repoDir = REPO_DIR
   const local = listPlugins(repoDir)
 
-  // 远程按 name 取 version 最高者（同名多库时）
+  // 远程按 name 取代表包：优先保留有合法版本者（同名多库取版本最高），
+  // 全无版本时保留首个（供内容哈希兜底）。
   const remote = new Map<string, IndexedPackage>()
   for (const p of buildIndex()) {
-    if (!p.version || !isValidVersion(p.version)) continue
     const cur = remote.get(p.name)
-    if (!cur || compareVersions(p.version, cur.version!) > 0) remote.set(p.name, p)
+    if (!cur) { remote.set(p.name, p); continue }
+    const pv = !!p.version && isValidVersion(p.version)
+    const cv = !!cur.version && isValidVersion(cur.version)
+    if (pv && cv) { if (compareVersions(p.version!, cur.version!) > 0) remote.set(p.name, p) }
+    else if (pv && !cv) remote.set(p.name, p)
   }
 
   const out: UpdateItem[] = []
   for (const lp of local) {
-    if (!lp.version || !isValidVersion(lp.version)) continue
     const r = remote.get(lp.name)
     if (!r) continue
-    if (compareVersions(r.version!, lp.version) > 0) {
+    const lv = !!lp.version && isValidVersion(lp.version)
+    const rv = !!r.version && isValidVersion(r.version)
+    if (lv && rv) {
+      if (compareVersions(r.version!, lp.version!) > 0) {
+        out.push({
+          name: lp.name, kind: r.kind, localVersion: lp.version!,
+          remoteVersion: r.version!, repoId: r.repoId, source: r.source, sourceUrl: r.sourceUrl,
+          reason: 'version',
+        })
+      }
+    } else if (lp.sourceHash && r.contentHash && lp.sourceHash !== r.contentHash) {
+      // 兜底：至少一侧无合法版本，且两侧都有内容哈希且不同 → 内容更新
       out.push({
-        name: lp.name, kind: r.kind, localVersion: lp.version,
-        remoteVersion: r.version!, repoId: r.repoId, source: r.source, sourceUrl: r.sourceUrl,
+        name: lp.name, kind: r.kind, localVersion: lp.version ?? '',
+        remoteVersion: r.version ?? '', repoId: r.repoId, source: r.source, sourceUrl: r.sourceUrl,
+        reason: 'content',
       })
     }
   }

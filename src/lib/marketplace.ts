@@ -14,6 +14,7 @@ export interface PluginEntry {
   displayName?: string
   origin?: string  // 导入来源仓库（监听库 source / 引用型包 sourceUrl）；手动上传为 undefined
   exclude?: string[]  // 导入时剔除的包根顶层条目；更新时复用，免得每次重选
+  sourceHash?: string  // 导入时源包目录的内容哈希；供无版本包的更新检测兜底比对
 }
 export interface Marketplace {
   name: string

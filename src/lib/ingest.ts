@@ -1,5 +1,6 @@
 /** @author sgz @since 2026-07-03 */
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import matter from 'gray-matter'
@@ -16,6 +17,30 @@ const KEEP_ALWAYS = new Set(['.claude-plugin', 'SKILL.md'])
 
 export function toKebab(s: string): string {
   return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+// 无版本包的内容指纹：递归遍历包目录，按 relpath 排序后折进 sha256（relpath + NUL + 字节）。
+// 不套 exclude——哈希原始全量文件，使导入时的 sourceHash 与远程 discoverPackages 的 contentHash
+// 输入一致、可比（见 docs/superpowers/specs 内的设计文档）。跳过 .git，避免包根即仓库根时结果不稳定。
+export function hashPackageDir(root: string): string {
+  const files: string[] = []
+  const walk = (dir: string, rel: string): void => {
+    for (const name of fs.readdirSync(dir)) {
+      if (name === '.git') continue
+      const relPath = rel ? `${rel}/${name}` : name
+      if (fs.statSync(path.join(dir, name)).isDirectory()) walk(path.join(dir, name), relPath)
+      else files.push(relPath)
+    }
+  }
+  walk(root, '')
+  files.sort()
+  const h = createHash('sha256')
+  for (const rel of files) {
+    h.update(rel)
+    h.update('\0')
+    h.update(fs.readFileSync(path.join(root, rel)))
+  }
+  return h.digest('hex')
 }
 
 function dirSize(p: string): number {
@@ -186,6 +211,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
       displayName: opts?.displayName?.trim() || undefined,
       origin: opts?.origin?.trim() || prevEntry?.origin, // 覆盖导入时保留原 origin
       exclude: finalExclude?.length ? finalExclude : undefined,
+      sourceHash: hashPackageDir(found.root), // 无版本包更新检测用；哈希原始源目录
     })
   }, `${opts?.overwrite ? 'update' : 'add'} ${name}`)
 
@@ -224,7 +250,7 @@ export function findRoots(dir: string): FoundRoot[] {
   return out
 }
 
-export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; description: string; root: string | null; sourceUrl?: string; version?: string }
+export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; description: string; root: string | null; sourceUrl?: string; version?: string; contentHash?: string }
 
 export function discoverPackages(dir: string): DiscoveredPackage[] {
   const packages: DiscoveredPackage[] = []
@@ -236,6 +262,7 @@ export function discoverPackages(dir: string): DiscoveredPackage[] {
         name: toKebab(pj.name || path.basename(root)),
         kind, description: pj.description || '', root, sourceUrl: undefined,
         version: typeof pj.version === 'string' ? pj.version : undefined,
+        contentHash: hashPackageDir(root),
       })
     } else {
       const fm = matter(fs.readFileSync(path.join(root, 'SKILL.md'), 'utf8')).data
@@ -243,6 +270,7 @@ export function discoverPackages(dir: string): DiscoveredPackage[] {
         name: toKebab(fm.name || path.basename(root)),
         kind, description: fm.description || '', root, sourceUrl: undefined,
         version: typeof fm.version === 'string' ? fm.version : undefined,
+        contentHash: hashPackageDir(root),
       })
     }
   }

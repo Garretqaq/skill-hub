@@ -4,7 +4,7 @@ import { expect, test } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { ingest, previewEntries } from '@/lib/ingest'
+import { ingest, previewEntries, hashPackageDir } from '@/lib/ingest'
 import { readMarketplace } from '@/lib/marketplace'
 
 function tmp(): string {
@@ -305,4 +305,52 @@ test('ingest 更新保留 origin 的行为不受 exclude 改动影响', () => {
   ingest(repo, mkFatPlugin(), { origin: 'o/r', exclude: ['site'] })
   ingest(repo, mkFatPlugin(), { overwrite: true })
   expect(readMarketplace(repo).plugins[0].origin).toBe('o/r')
+})
+
+// —— hashPackageDir：无版本包内容更新检测的哈希基元 ——
+function mkTree(files: Record<string, string>): string {
+  const dir = tmp()
+  for (const [rel, body] of Object.entries(files)) {
+    const p = path.join(dir, rel)
+    fs.mkdirSync(path.dirname(p), { recursive: true })
+    fs.writeFileSync(p, body)
+  }
+  return dir
+}
+
+test('hashPackageDir 相同内容得相同哈希', () => {
+  const a = mkTree({ 'SKILL.md': 'x', 'a/b.txt': 'y' })
+  const b = mkTree({ 'a/b.txt': 'y', 'SKILL.md': 'x' })  // 创建顺序不同
+  expect(hashPackageDir(a)).toBe(hashPackageDir(b))
+})
+
+test('hashPackageDir 改一个文件哈希变', () => {
+  const a = mkTree({ 'SKILL.md': 'x', 'a/b.txt': 'y' })
+  const b = mkTree({ 'SKILL.md': 'x', 'a/b.txt': 'y2' })
+  expect(hashPackageDir(a)).not.toBe(hashPackageDir(b))
+})
+
+test('hashPackageDir 增删文件哈希变', () => {
+  const a = mkTree({ 'SKILL.md': 'x' })
+  const b = mkTree({ 'SKILL.md': 'x', 'extra.txt': '' })
+  expect(hashPackageDir(a)).not.toBe(hashPackageDir(b))
+})
+
+test('hashPackageDir 忽略 .git 目录', () => {
+  const a = mkTree({ 'SKILL.md': 'x' })
+  const b = mkTree({ 'SKILL.md': 'x', '.git/HEAD': 'ref: refs/heads/main' })
+  expect(hashPackageDir(a)).toBe(hashPackageDir(b))
+})
+
+test('hashPackageDir 文件名参与哈希（同内容不同名不相等）', () => {
+  const a = mkTree({ 'a.txt': 'same' })
+  const b = mkTree({ 'b.txt': 'same' })
+  expect(hashPackageDir(a)).not.toBe(hashPackageDir(b))
+})
+
+test('ingest 在 manifest entry 写入 sourceHash（供无版本包更新检测）', () => {
+  const repo = seedRepo()
+  ingest(repo, mkSkill('a', 'body'))
+  const entry = readMarketplace(repo).plugins.find(p => p.name === 'a')
+  expect(entry?.sourceHash).toMatch(/^[0-9a-f]{64}$/)
 })

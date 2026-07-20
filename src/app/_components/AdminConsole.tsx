@@ -231,7 +231,7 @@ function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
         body: JSON.stringify({ name: plugin.name }),
       })
       if (!res.ok) { onError(`更新失败: ${await res.text()}`); return }
-      onSuccess(`已更新 ${plugin.name} 到 v${update?.remoteVersion}`)
+      onSuccess(update?.reason === 'content' ? `已更新 ${plugin.name}` : `已更新 ${plugin.name} 到 v${update?.remoteVersion}`)
       onChanged()
     } catch (err) {
       onError(`更新失败: ${err}`)
@@ -266,10 +266,10 @@ function AdminRow({ plugin, update, onChanged, onError, onSuccess }: {
         </Link>
         {update && (
           <span
-            title="仅按版本号检测"
+            title={update.reason === 'content' ? '无版本号，按内容哈希检测' : '按版本号检测'}
             className="px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 rounded border border-amber-500/30 whitespace-nowrap flex-shrink-0"
           >
-            v{update.localVersion}→v{update.remoteVersion}
+            {update.reason === 'content' ? '内容有更新' : `v${update.localVersion}→v${update.remoteVersion}`}
           </span>
         )}
         {plugin.tags?.slice(0, 3).map((tag) => (

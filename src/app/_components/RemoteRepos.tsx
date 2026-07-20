@@ -45,11 +45,19 @@ function humanSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
+// 已导入本地市场：有版本或有导入时源哈希（无版本包 localVersion 为空，靠 localSourceHash 判定）
+function isImported(pkg: IndexedPackage): boolean {
+  return pkg.localVersion != null || pkg.localSourceHash != null
+}
+
 // 有更新：已导入本地，且远程与本地版本均合法、远程更高
 function hasUpdate(pkg: IndexedPackage): boolean {
-  return pkg.localVersion != null && !!pkg.version
+  if (!isImported(pkg)) return false // 未导入本地
+  const versioned = !!pkg.version && !!pkg.localVersion
     && isValidVersion(pkg.version) && isValidVersion(pkg.localVersion)
-    && compareVersions(pkg.version, pkg.localVersion) > 0
+  if (versioned) return compareVersions(pkg.version!, pkg.localVersion!) > 0
+  // 兜底：至少一侧无合法版本，用内容哈希比对
+  return !!pkg.localSourceHash && !!pkg.contentHash && pkg.localSourceHash !== pkg.contentHash
 }
 
 export default function RemoteRepos() {
@@ -153,16 +161,16 @@ export default function RemoteRepos() {
           exclude,
         }),
       })
-      if (!res.ok) { error(`${pkg.localVersion ? '更新' : '导入'}失败: ${await res.text()}`); return }
+      if (!res.ok) { error(`${isImported(pkg) ? '更新' : '导入'}失败: ${await res.text()}`); return }
       setPreview(null)
-      success(`已${pkg.localVersion ? '更新' : '导入'} ${pkg.name}${pkg.localVersion ? '' : ' 到本市场'}`)
+      success(`已${isImported(pkg) ? '更新' : '导入'} ${pkg.name}${isImported(pkg) ? '' : ' 到本市场'}`)
       await load(q) // 刷新 localVersion，按钮切到「更新」/置灰
     } finally { setBusy(null) }
   }
 
   // 首次导入弹窗勾选；更新沿用上次的勾选，直接导入
   const startImport = async (pkg: IndexedPackage) => {
-    if (pkg.localVersion != null) return doImport(pkg)
+    if (isImported(pkg)) return doImport(pkg)
 
     setBusy(`import:${pkg.repoId}:${pkg.name}`)
     try {
@@ -311,7 +319,7 @@ export default function RemoteRepos() {
                     <div className="divide-y divide-zinc-800 border-t border-zinc-800">
                       {group.items.map((pkg) => {
                         const isReference = !!pkg.sourceUrl // 引用型包判定
-                        const imported = pkg.localVersion != null // 已导入本地市场
+                        const imported = isImported(pkg) // 已导入本地市场
                         const busyKey = busy === `import:${pkg.repoId}:${pkg.name}`
                         const canUpdate = hasUpdate(pkg)
                         return (
@@ -326,7 +334,9 @@ export default function RemoteRepos() {
                                 <button
                                   onClick={() => startImport(pkg)}
                                   disabled={busyKey || !canUpdate}
-                                  title={canUpdate ? `更新到 ${pkg.version}` : `已是最新版本 ${pkg.localVersion}`}
+                                  title={canUpdate
+                                    ? (pkg.version ? `更新到 ${pkg.version}` : '内容有更新')
+                                    : (pkg.localVersion ? `已是最新版本 ${pkg.localVersion}` : '已是最新')}
                                   className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 >
                                   {busyKey ? '更新中' : '更新'}

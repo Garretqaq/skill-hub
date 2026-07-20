@@ -62,6 +62,23 @@ function initMarketRepo(dir: string): void {
   }
 }
 
+// 初始化带指定 plugin 条目的 no-checkout 市场仓库（供更新检测边界测试）
+function initMarketWith(dir: string, plugins: object[]): void {
+  fs.mkdirSync(dir, { recursive: true })
+  execFileSync('git', ['init', '-q'], { cwd: dir })
+  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: dir })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: dir })
+  fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(dir, '.claude-plugin/marketplace.json'),
+    JSON.stringify({ name: 'mine', owner: { name: 'x' }, plugins }))
+  execFileSync('git', ['add', '-A'], { cwd: dir })
+  execFileSync('git', ['commit', '-q', '-m', 'seed'], { cwd: dir })
+  execFileSync('git', ['reset', '--mixed', 'HEAD'], { cwd: dir }) // no-checkout
+  for (const f of fs.readdirSync(dir)) {
+    if (f !== '.git') fs.rmSync(path.join(dir, f), { recursive: true, force: true })
+  }
+}
+
 test('cloneInto 浅克隆到目标目录', async () => {
   const { cloneInto } = await import('@/lib/watched')
   const remote = remoteRepo('alpha')
@@ -315,7 +332,7 @@ test('updateStatus：远程版本更高才算有更新，更新后闭环', async
   expect(updateStatus()).toHaveLength(0)
 })
 
-test('updateStatus：远程包无 version 不误报', async () => {
+test('updateStatus：无版本包内容未变，哈希兜底不误报', async () => {
   const { cloneInto, updateStatus } = await import('@/lib/watched')
   const { ingest } = await import('@/lib/ingest')
   const remote = remoteRepo('alpha')
@@ -325,14 +342,36 @@ test('updateStatus：远程包无 version 不误报', async () => {
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
   const repoDir = path.join(work, 'data/marketplace')
   initMarketRepo(repoDir)
-  ingest(repoDir, path.join(work, 'data/watched', id, 'plugins', 'alpha'))
-  // 抹掉缓存里 alpha 的 version
-  fs.writeFileSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'),
+  const alphaDir = path.join(work, 'data/watched', id, 'plugins', 'alpha')
+  // 上游无版本：先抹掉缓存 version，再导入（sourceHash 基于无版本内容）
+  fs.writeFileSync(path.join(alphaDir, '.claude-plugin/plugin.json'),
     JSON.stringify({ name: 'alpha', description: 'alpha desc' }))
+  ingest(repoDir, alphaDir)
+  // 内容未再变动 → sourceHash == contentHash → 不报
   expect(updateStatus()).toHaveLength(0)
 })
 
-test('updateStatus：远程版本非法（非 semver）不误报', async () => {
+test('updateStatus：无版本包内容变更，哈希兜底报 content 更新', async () => {
+  const { cloneInto, updateStatus } = await import('@/lib/watched')
+  const { ingest } = await import('@/lib/ingest')
+  const remote = remoteRepo('alpha')
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+  const repoDir = path.join(work, 'data/marketplace')
+  initMarketRepo(repoDir)
+  const alphaDir = path.join(work, 'data/watched', id, 'plugins', 'alpha')
+  fs.writeFileSync(path.join(alphaDir, '.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'alpha', description: 'alpha desc' })) // 无版本
+  ingest(repoDir, alphaDir)                                       // 记录 sourceHash = H(S0)
+  fs.writeFileSync(path.join(alphaDir, 'NEW.md'), 'new content')  // 上游内容变更（仍无版本）
+  const ups = updateStatus()
+  expect(ups).toHaveLength(1)
+  expect(ups[0]).toMatchObject({ name: 'alpha', reason: 'content' })
+})
+
+test('updateStatus：远程版本非法（非 semver）时不按版本比对，走内容兜底', async () => {
   const { cloneInto, updateStatus } = await import('@/lib/watched')
   const { ingest } = await import('@/lib/ingest')
   const remote = remoteRepo('alpha')
@@ -343,9 +382,46 @@ test('updateStatus：远程版本非法（非 semver）不误报', async () => {
   const repoDir = path.join(work, 'data/marketplace')
   initMarketRepo(repoDir)
   ingest(repoDir, path.join(work, 'data/watched', id, 'plugins', 'alpha'))
-  // 远程 version 是格式非法的字符串（非缺失，而是不满足 \d+\.\d+\.\d+）
+  // 远程 version 改为非法字符串（内容随之变化）
   fs.writeFileSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'),
     JSON.stringify({ name: 'alpha', description: 'alpha desc', version: 'abc' }))
+  const ups = updateStatus()
+  // 非法版本不被当作版本更新；因内容已变，按内容哈希兜底报 content
+  expect(ups).toHaveLength(1)
+  expect(ups[0].reason).toBe('content')
+})
+
+test('updateStatus：引用型包无版本时不报（无内容哈希可比）', async () => {
+  const { cloneInto, updateStatus } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha')
+  const id = 'market-with-refs'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  // 缓存里挂一个引用型包 external-pkg（无 version，root=null → 无 contentHash）
+  const cacheDir = path.join(work, 'data/watched', id)
+  fs.mkdirSync(path.join(cacheDir, '.claude-plugin'), { recursive: true })
+  fs.writeFileSync(path.join(cacheDir, '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({ name: 'm', plugins: [{ name: 'external-pkg', source: { url: 'https://x/pkg.git' }, description: 'e' }] }))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+  // 本地已导入 external-pkg（带 sourceHash），远程引用型无 contentHash → 兜底不成立
+  initMarketWith(path.join(work, 'data/marketplace'),
+    [{ name: 'external-pkg', source: './plugins/external-pkg', version: '1.0.0', sourceHash: 'deadbeef' }])
+  expect(updateStatus()).toHaveLength(0)
+})
+
+test('updateStatus：存量本地包无 sourceHash 时不报也不崩', async () => {
+  const { cloneInto, updateStatus } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha')
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  // 上游无版本（走内容兜底路径），但本地条目缺 sourceHash（存量导入）
+  fs.writeFileSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'),
+    JSON.stringify({ name: 'alpha', description: 'alpha desc' }))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+  initMarketWith(path.join(work, 'data/marketplace'),
+    [{ name: 'alpha', source: './plugins/alpha', version: '1.0.0' }]) // 无 sourceHash
+  expect(() => updateStatus()).not.toThrow()
   expect(updateStatus()).toHaveLength(0)
 })
 
