@@ -114,8 +114,9 @@ function pluginExistsInHead(repoDir: string, name: string): boolean {
 // 在 work-tree 里写 manifest 条目（读当前 HEAD 的 manifest，替换/新增条目，写到 wt）
 function writeManifestEntry(repoDir: string, wt: string, entry: PluginEntry): void {
   const m = readMarketplace(repoDir) // 读当前 HEAD
-  m.plugins = m.plugins.filter(x => x.name !== entry.name)
-  m.plugins.push(entry)
+  const idx = m.plugins.findIndex(x => x.name === entry.name)
+  if (idx >= 0) m.plugins[idx] = entry // 覆盖：原位替换，保持 manifest 顺序
+  else m.plugins.push(entry)
   const p = path.join(wt, '.claude-plugin', 'marketplace.json')
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
