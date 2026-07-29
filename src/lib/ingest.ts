@@ -251,12 +251,7 @@ export function findRoots(dir: string): FoundRoot[] {
   return out
 }
 
-export interface DiscoveredPackage {
-  name: string; kind: 'plugin' | 'skill'; description: string
-  /** filesystem 模式：绝对路径；git 模式：tree-relative 路径（空串=仓库根）；引用型包：null */
-  root: string | null
-  sourceUrl?: string; version?: string; contentHash?: string
-}
+export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; description: string; root: string | null /** filesystem 模式：绝对路径；git 模式：tree-relative 路径（空串=仓库根）；引用型包：null */; sourceUrl?: string; version?: string; contentHash?: string }
 
 // git-native 包发现：从 git 对象读取，无需工作树。
 // root 字段存 tree-relative 路径（空串 = 仓库根），引用型包为 null。
@@ -323,7 +318,7 @@ export function discoverPackagesFromGit(repoDir: string): DiscoveredPackage[] {
       try {
         pj = JSON.parse(execFileSync('git', ['-C', repoDir, 'show', gitRef('.claude-plugin/plugin.json')],
           { stdio: ['ignore', 'pipe', 'pipe'] }).toString())
-      } catch { continue }
+      } catch { continue } // ponytail: 静默跳过读取失败的包；升级路径：收集 errors[] 返回给调用方
       name = toKebab(pj.name || (treePath ? path.basename(treePath) : 'unknown'))
       description = pj.description || ''
       version = typeof pj.version === 'string' ? pj.version : undefined
@@ -332,7 +327,7 @@ export function discoverPackagesFromGit(repoDir: string): DiscoveredPackage[] {
       try {
         raw = execFileSync('git', ['-C', repoDir, 'show', gitRef('SKILL.md')],
           { stdio: ['ignore', 'pipe', 'pipe'] }).toString()
-      } catch { continue }
+      } catch { continue } // ponytail: 静默跳过读取失败的包；升级路径：收集 errors[] 返回给调用方
       const fm = matter(raw).data
       name = toKebab((fm.name as string | undefined) || (treePath ? path.basename(treePath) : 'unknown'))
       description = (fm.description as string | undefined) || ''
@@ -362,7 +357,7 @@ export function discoverPackagesFromGit(repoDir: string): DiscoveredPackage[] {
         }
       }
     }
-  } catch { /* 无 marketplace.json 或格式错误，静默跳过 */ }
+  } catch { /* 无 marketplace.json 或格式错误，静默跳过 */ } // ponytail: 升级路径：收集 parse errors 供调用方诊断
 
   return packages
 }
