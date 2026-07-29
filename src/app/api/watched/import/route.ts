@@ -8,7 +8,7 @@ import { REPO_DIR, stripCreds } from '@/lib/config'
 import { syncFromRemote, push, headOf, resetTo } from '@/lib/repo'
 import { ingest, discoverPackages, toKebab } from '@/lib/ingest'
 import { normalizeSource } from '@/lib/remote'
-import { packageRoot, cloneInto, listWatched } from '@/lib/watched'
+import { withExtractedPackage, cloneInto, listWatched } from '@/lib/watched'
 
 export async function POST(req: NextRequest) {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
@@ -20,10 +20,28 @@ export async function POST(req: NextRequest) {
   const watched = listWatched().find(r => r.id === String(id))
   const origin = sourceUrl && typeof sourceUrl === 'string' ? String(sourceUrl) : watched?.source
 
-  const root = packageRoot(String(id), String(name))
+  // 本地包：从 git 对象提取后导入；sourceHash 传远程 tree SHA（与 contentHash 同源可比）
+  let localResult: unknown = null
+  try {
+    localResult = withExtractedPackage(String(id), String(name), (root, treeSha) => {
+      syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
+      const before = headOf()
+      const res = ingest(REPO_DIR, root, { overwrite: true, origin, exclude: excludeList, sourceHash: treeSha })
+      try {
+        push()
+      } catch (e) {
+        if (before) resetTo(before)
+        throw new Error(`push failed: ${stripCreds(String(e))}`)
+      }
+      return res
+    })
+  } catch (e) {
+    return NextResponse.json({ error: stripCreds(String(e)) }, { status: 400 })
+  }
+  if (localResult) return NextResponse.json(localResult)
 
-  // 引用型包：packageRoot 返回 null 但提供了 sourceUrl，临时克隆导入
-  if (!root && sourceUrl && typeof sourceUrl === 'string') {
+  // 引用型包：本地无文件但提供了 sourceUrl，临时克隆导入
+  if (sourceUrl && typeof sourceUrl === 'string') {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-ref-'))
     try {
       // 克隆远程仓库到临时目录
@@ -61,22 +79,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 本地包或引用型包但未提供 sourceUrl：走原逻辑
-  if (!root) return NextResponse.json({ error: 'package not found' }, { status: 404 })
-
-  // 本地包导入（原逻辑不变）
-  syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
-  const before = headOf()
-  try {
-    const res = ingest(REPO_DIR, root, { overwrite: true, origin, exclude: excludeList })
-    try {
-      push()
-    } catch (e) {
-      if (before) resetTo(before)
-      return NextResponse.json({ error: 'push failed', detail: stripCreds(String(e)) }, { status: 500 })
-    }
-    return NextResponse.json(res)
-  } catch (e) {
-    return NextResponse.json({ error: stripCreds(String(e)) }, { status: 400 })
-  }
+  return NextResponse.json({ error: 'package not found' }, { status: 404 })
 }

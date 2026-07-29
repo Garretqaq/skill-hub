@@ -122,7 +122,9 @@ function writeManifestEntry(repoDir: string, wt: string, entry: PluginEntry): vo
   fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n')
 }
 
-export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string; description?: string; displayName?: string; origin?: string; exclude?: string[] }): IngestResult {
+// sourceHash：无版本包更新检测的比对基准。监听库导入须传入远程的 git tree SHA（与
+// discoverPackagesFromGit 的 contentHash 同源、可比）；zip 上传不传，回落到 hashPackageDir。
+export function ingest(repoDir: string, extractedDir: string, opts?: { name?: string; overwrite?: boolean; version?: string; description?: string; displayName?: string; origin?: string; exclude?: string[]; sourceHash?: string }): IngestResult {
   const found = findRoot(extractedDir)
   if (!found) throw new Error('unrecognized package: no plugin.json or SKILL.md')
 
@@ -212,7 +214,7 @@ export function ingest(repoDir: string, extractedDir: string, opts?: { name?: st
       displayName: opts?.displayName?.trim() || undefined,
       origin: opts?.origin?.trim() || prevEntry?.origin, // 覆盖导入时保留原 origin
       exclude: finalExclude?.length ? finalExclude : undefined,
-      sourceHash: hashPackageDir(found.root), // 无版本包更新检测用；哈希原始源目录
+      sourceHash: opts?.sourceHash ?? hashPackageDir(found.root), // 监听库传远程 tree SHA；zip 上传哈希源目录
     })
   }, `${opts?.overwrite ? 'update' : 'add'} ${name}`)
 

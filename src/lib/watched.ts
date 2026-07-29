@@ -4,8 +4,9 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
-import { discoverPackages } from './ingest'
+import { discoverPackagesFromGit } from './ingest'
 import { normalizeSource } from './remote'
 import { listPlugins, type PluginEntry } from './marketplace'
 import { isValidVersion, compareVersions } from './semver'
@@ -84,17 +85,38 @@ export async function restoreWatchedFromRepo(): Promise<void> {
 }
 
 // 浅克隆到目标目录（已存在先删）；url 由调用方保证已规范化
-// --recurse-submodules：市场用 submodule 引用包时（如 superpowers），拉取真实文件而非空 gitlink
+// --no-checkout：不落工作树，包发现走 git 对象（discoverPackagesFromGit），体积仅 .git
+// ponytail: 不再 --recurse-submodules，用 submodule 组织包的监听库其包不可见；
+// 升级路径：遇 gitlink 时递归 .git/modules/<name> 的对象库
 export function cloneInto(url: string, dir: string): void {
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(path.dirname(dir), { recursive: true })
-  execFileSync('git', ['clone', '--depth', '1', '--recurse-submodules', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
+  execFileSync('git', ['clone', '--depth', '1', '--no-checkout', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
 export async function cloneIntoAsync(url: string, dir: string): Promise<void> {
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(path.dirname(dir), { recursive: true })
-  await execFileAsync('git', ['clone', '--depth', '1', '--recurse-submodules', url, dir])
+  await execFileAsync('git', ['clone', '--depth', '1', '--no-checkout', url, dir])
+}
+
+// 把包文件从 git 对象提取到临时目录供读写，用完即删（no-checkout 下无工作树可直接读）
+// 返回 null 表示包不存在或为引用型包（无本地文件）
+export function withExtractedPackage<T>(id: string, name: string, fn: (root: string, treeSha?: string) => T): T | null {
+  const dir = cacheDir(id)
+  if (!fs.existsSync(dir)) return null
+  const pkg = discoverPackagesFromGit(dir).find(p => p.name === name)
+  if (!pkg || pkg.root === null) return null   // 不存在，或引用型包（调用方另走临时克隆）
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-extract-'))
+  try {
+    const treeRef = pkg.root ? `HEAD:${pkg.root}` : 'HEAD'
+    // git archive 输出 tar 流，剥掉前缀后直接落到 tmp 根
+    const tar = execFileSync('git', ['-C', dir, 'archive', treeRef], { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 512 * 1024 * 1024 })
+    execFileSync('tar', ['-x', '-C', tmp], { input: tar, stdio: ['pipe', 'pipe', 'pipe'] })
+    return fn(tmp, pkg.contentHash)
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true })
+  }
 }
 
 async function runPool<T>(tasks: (() => Promise<T>)[], concurrency: number): Promise<T[]> {
@@ -142,8 +164,8 @@ async function refreshOne(id: string): Promise<void> {
   const dir = cacheDir(id)
   try {
     await execFileAsync('git', ['fetch', '--depth', '1', 'origin'], { cwd: dir })
-    await execFileAsync('git', ['reset', '--hard', 'FETCH_HEAD'], { cwd: dir })
-    await execFileAsync('git', ['submodule', 'update', '--init', '--recursive', '--depth', '1'], { cwd: dir })
+    // no-checkout 仓库用 reset --soft：只挪 HEAD，不碰 index/工作树
+    await execFileAsync('git', ['reset', '--soft', 'FETCH_HEAD'], { cwd: dir })
   } catch {
     await cloneIntoAsync(repo.url, dir)
   }
@@ -167,10 +189,11 @@ export async function refreshAll(): Promise<RefreshResult> {
   return { total: repos.length, ok: repos.length - failed.length, failed }
 }
 
+// 从 git 对象读市场名（no-checkout 下无工作树文件可读）
 function marketNameOf(id: string): string | null {
   try {
-    const m = JSON.parse(fs.readFileSync(path.join(cacheDir(id), '.claude-plugin/marketplace.json'), 'utf8'))
-    return m.name || null
+    const out = execFileSync('git', ['-C', cacheDir(id), 'show', 'HEAD:.claude-plugin/marketplace.json'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+    return JSON.parse(out).name || null
   } catch { return null }
 }
 
@@ -188,7 +211,7 @@ export function buildIndex(): IndexedPackage[] {
     const dir = cacheDir(r.id)
     if (!fs.existsSync(dir)) continue
     const market = marketNameOf(r.id)
-    for (const pkg of discoverPackages(dir)) {
+    for (const pkg of discoverPackagesFromGit(dir)) {
       out.push({
         repoId: r.id,
         source: r.source,
@@ -226,12 +249,6 @@ export function search(q: string): IndexedPackage[] {
   return all.filter(p => p.name.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw))
 }
 
-// 定位某监听库里指定 name 的包根目录（供导入用）
-export function packageRoot(id: string, name: string): string | null {
-  const dir = cacheDir(id)
-  if (!fs.existsSync(dir)) return null
-  return discoverPackages(dir).find(p => p.name === name)?.root ?? null
-}
 
 export interface UpdateItem {
   name: string

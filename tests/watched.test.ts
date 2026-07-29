@@ -26,8 +26,8 @@ afterEach(() => {
   fs.rmSync(work, { recursive: true, force: true })
 })
 
-// 造一个本地 git 仓库当「远程」，内含一个插件
-function remoteRepo(pluginName: string): string {
+// 造一个本地 git 仓库当「远程」，内含一个插件；manifest 可选覆盖（引用型包场景）
+function remoteRepo(pluginName: string, manifest?: object): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shremote-'))
   execFileSync('git', ['init', '-q'], { cwd: dir })
   execFileSync('git', ['config', 'user.email', 't@t'], { cwd: dir })
@@ -38,10 +38,21 @@ function remoteRepo(pluginName: string): string {
     JSON.stringify({ name: pluginName, description: `${pluginName} desc`, version: '1.0.0' }))
   fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
   fs.writeFileSync(path.join(dir, '.claude-plugin/marketplace.json'),
-    JSON.stringify({ name: 'ext-market', owner: { name: 'x' }, plugins: [] }))
+    JSON.stringify(manifest ?? { name: 'ext-market', owner: { name: 'x' }, plugins: [] }))
   execFileSync('git', ['add', '-A'], { cwd: dir })
   execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: dir })
   return dir
+}
+
+// 在 remote 仓库里改文件并提交（no-checkout 下内容变更须走 commit 才可见）
+function commitTo(remote: string, files: Record<string, string>, msg = 'change'): void {
+  for (const [rel, content] of Object.entries(files)) {
+    const p = path.join(remote, rel)
+    fs.mkdirSync(path.dirname(p), { recursive: true })
+    fs.writeFileSync(p, content)
+  }
+  execFileSync('git', ['add', '-A'], { cwd: remote })
+  execFileSync('git', ['commit', '-q', '-m', msg], { cwd: remote })
 }
 
 // ponytail: 初始化空的 no-checkout 市场仓库（供 ingest/withWorkTree 使用）
@@ -79,39 +90,15 @@ function initMarketWith(dir: string, plugins: object[]): void {
   }
 }
 
-test('cloneInto 浅克隆到目标目录', async () => {
+test('cloneInto 浅克隆到目标目录（no-checkout：无工作树，对象在 .git）', async () => {
   const { cloneInto } = await import('@/lib/watched')
   const remote = remoteRepo('alpha')
   const dest = path.join(work, 'data/watched/alpha')
   cloneInto(remote, dest)
-  expect(fs.existsSync(path.join(dest, 'plugins/alpha/.claude-plugin/plugin.json'))).toBe(true)
-})
-
-test('cloneInto 递归 submodule：市场以子模块引用包时拉取真实文件', async () => {
-  const { cloneInto } = await import('@/lib/watched')
-  const inner = remoteRepo('superpowers') // 被引用的真实包仓库
-  // 市场仓库：把 inner 作为 plugins/superpowers 子模块引入
-  const market = fs.mkdtempSync(path.join(os.tmpdir(), 'shmarket-'))
-  execFileSync('git', ['init', '-q'], { cwd: market })
-  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: market })
-  execFileSync('git', ['config', 'user.name', 't'], { cwd: market })
-  execFileSync('git', ['-c', 'protocol.file.allow=always', 'submodule', 'add', inner, 'plugins/superpowers'], { cwd: market })
-  execFileSync('git', ['commit', '-q', '-m', 'add submodule'], { cwd: market })
-
-  const dest = path.join(work, 'data/watched/market')
-  // file:// 子模块默认被 git 禁用；仅测试放行（真实 https 子模块不受影响）
-  process.env.GIT_CONFIG_COUNT = '1'
-  process.env.GIT_CONFIG_KEY_0 = 'protocol.file.allow'
-  process.env.GIT_CONFIG_VALUE_0 = 'always'
-  try {
-    cloneInto(market, dest)
-  } finally {
-    delete process.env.GIT_CONFIG_COUNT
-    delete process.env.GIT_CONFIG_KEY_0
-    delete process.env.GIT_CONFIG_VALUE_0
-  }
-  // gitlink 被展开成真实文件：plugins/superpowers 内应含子模块自己的 plugins/superpowers/...
-  expect(fs.existsSync(path.join(dest, 'plugins/superpowers/plugins/superpowers/.claude-plugin/plugin.json'))).toBe(true)
+  // 文件在 git 对象里可达
+  expect(() => execFileSync('git', ['-C', dest, 'cat-file', '-e', 'HEAD:plugins/alpha/.claude-plugin/plugin.json'])).not.toThrow()
+  // 但工作树是空的（只有 .git）
+  expect(fs.readdirSync(dest)).toEqual(['.git'])
 })
 
 test('listWatched/removeWatched 走 data/watched.json；buildIndex+search 聚合并过滤', async () => {
@@ -185,16 +172,24 @@ test('refreshWatched 拉取远程新提交', async () => {
   expect(buildIndex().map(p => p.name).sort()).toEqual(['alpha', 'beta'])
 })
 
-test('packageRoot 定位指定包根', async () => {
-  const { cloneInto, packageRoot } = await import('@/lib/watched')
+test('withExtractedPackage 提取包文件到临时目录，回调后清理', async () => {
+  const { cloneInto, withExtractedPackage } = await import('@/lib/watched')
   const remote = remoteRepo('alpha')
   const id = 'alpha-repo'
   cloneInto(remote, path.join(work, 'data/watched', id))
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
-  const root = packageRoot(id, 'alpha')
-  expect(root && fs.existsSync(path.join(root, '.claude-plugin/plugin.json'))).toBe(true)
-  expect(packageRoot(id, 'nope')).toBeNull()
+
+  let seenDir = ''
+  const treeSha = withExtractedPackage(id, 'alpha', (root, sha) => {
+    seenDir = root
+    // 回调内包文件已落地
+    expect(fs.existsSync(path.join(root, '.claude-plugin/plugin.json'))).toBe(true)
+    return sha
+  })
+  expect(treeSha).toMatch(/^[0-9a-f]{40}$/)   // 带回远程 tree SHA
+  expect(fs.existsSync(seenDir)).toBe(false)  // 临时目录已清理
+  expect(withExtractedPackage(id, 'nope', () => 'x')).toBeNull()
 })
 
 test('toId 拒绝目录穿越与空 id', async () => {
@@ -253,20 +248,13 @@ test('refreshAll 容错：单个失败不影响其余，全部尝试后抛聚合
 
 test('buildIndex 包含引用型包的 sourceUrl', async () => {
   const { cloneInto, buildIndex } = await import('@/lib/watched')
-  const remote = remoteRepo('alpha')
+  const remote = remoteRepo('alpha', {
+    name: 'test-market',
+    plugins: [{ name: 'external-pkg', source: { url: 'https://github.com/ext/pkg.git' }, description: 'ext' }],
+  })
   const id = 'market-with-refs'
 
-  // 手工克隆一个含 marketplace.json 的远程
   cloneInto(remote, path.join(work, 'data/watched', id))
-
-  // 在该缓存里追加一个 marketplace.json（模拟索引型仓库）
-  const cacheDir = path.join(work, 'data/watched', id)
-  fs.mkdirSync(path.join(cacheDir, '.claude-plugin'), { recursive: true })
-  fs.writeFileSync(path.join(cacheDir, '.claude-plugin', 'marketplace.json'),
-    JSON.stringify({
-      name: 'test-market',
-      plugins: [{ name: 'external-pkg', source: { url: 'https://github.com/ext/pkg.git' }, description: 'ext' }]
-    }))
 
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
@@ -279,24 +267,20 @@ test('buildIndex 包含引用型包的 sourceUrl', async () => {
   expect(ref).toMatchObject({ repoId: id, name: 'external-pkg', kind: 'plugin', sourceUrl: 'https://github.com/ext/pkg.git' })
 })
 
-test('packageRoot 对引用型包返回 null', async () => {
-  const { cloneInto, packageRoot } = await import('@/lib/watched')
-  const remote = remoteRepo('alpha')
+test('withExtractedPackage 对引用型包返回 null', async () => {
+  const { cloneInto, withExtractedPackage } = await import('@/lib/watched')
   const id = 'local-vs-ref'
-
+  // marketplace.json 须在 remote 里 commit，no-checkout 下只从 git 对象读
+  const remote = remoteRepo('alpha', {
+    name: 'test-market',
+    plugins: [{ name: 'ref-only', source: { url: 'https://github.com/ext/pkg.git' }, description: '' }],
+  })
   cloneInto(remote, path.join(work, 'data/watched', id))
-  const cacheDir = path.join(work, 'data/watched', id)
-  fs.mkdirSync(path.join(cacheDir, '.claude-plugin'), { recursive: true })
-  fs.writeFileSync(path.join(cacheDir, '.claude-plugin', 'marketplace.json'),
-    JSON.stringify({
-      name: 'test-market',
-      plugins: [{ name: 'ref-only', source: { url: 'https://github.com/ext/pkg.git' }, description: '' }]
-    }))
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
 
-  expect(packageRoot(id, 'alpha')).toBeTruthy() // 本地包
-  expect(packageRoot(id, 'ref-only')).toBeNull() // 引用型包
+  expect(withExtractedPackage(id, 'alpha', () => 'ok')).toBe('ok')      // 本地包
+  expect(withExtractedPackage(id, 'ref-only', () => 'ok')).toBeNull()   // 引用型包无本地文件
 })
 
 test('updateStatus：远程版本更高才算有更新，更新后闭环', async () => {
@@ -312,15 +296,15 @@ test('updateStatus：远程版本更高才算有更新，更新后闭环', async
   const repoDir = path.join(work, 'data/marketplace')
   initMarketRepo(repoDir)
 
-  // 本地导入到 data/marketplace（v1.0.0）
-  const cacheRoot = path.join(work, 'data/watched', id, 'plugins', 'alpha')
-  ingest(repoDir, cacheRoot)
+  // 本地导入到 data/marketplace（v1.0.0）：走 withExtractedPackage，同路由真实路径
+  const { withExtractedPackage } = await import('@/lib/watched')
+  withExtractedPackage(id, 'alpha', (root, sha) => ingest(repoDir, root, { sourceHash: sha }))
   expect(updateStatus()).toHaveLength(0)        // 版本相同，无更新
 
   // 远程升到 1.1.0 并刷新缓存
-  fs.writeFileSync(path.join(remote, 'plugins/alpha/.claude-plugin/plugin.json'),
-    JSON.stringify({ name: 'alpha', description: 'alpha desc', version: '1.1.0' }))
-  execFileSync('git', ['commit', '-qam', 'bump'], { cwd: remote })
+  commitTo(remote, {
+    'plugins/alpha/.claude-plugin/plugin.json': JSON.stringify({ name: 'alpha', description: 'alpha desc', version: '1.1.0' }),
+  }, 'bump')
   await refreshWatched(id)
 
   const ups = updateStatus()
@@ -328,44 +312,47 @@ test('updateStatus：远程版本更高才算有更新，更新后闭环', async
   expect(ups[0]).toMatchObject({ name: 'alpha', localVersion: '1.0.0', remoteVersion: '1.1.0', repoId: id })
 
   // 模拟点击更新：以 remoteVersion 覆盖导入 → 闭环
-  ingest(repoDir, cacheRoot, { overwrite: true, version: '1.1.0' })
+  withExtractedPackage(id, 'alpha', (root, sha) => ingest(repoDir, root, { overwrite: true, version: '1.1.0', sourceHash: sha }))
   expect(updateStatus()).toHaveLength(0)
 })
 
 test('updateStatus：无版本包内容未变，哈希兜底不误报', async () => {
   const { cloneInto, updateStatus } = await import('@/lib/watched')
   const { ingest } = await import('@/lib/ingest')
+  const { withExtractedPackage } = await import('@/lib/watched')
   const remote = remoteRepo('alpha')
   const id = 'alpha-repo'
+  // 上游无版本：先在 remote 抹掉 version 并提交，再克隆
+  commitTo(remote, {
+    'plugins/alpha/.claude-plugin/plugin.json': JSON.stringify({ name: 'alpha', description: 'alpha desc' }),
+  }, 'drop version')
   cloneInto(remote, path.join(work, 'data/watched', id))
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
   const repoDir = path.join(work, 'data/marketplace')
   initMarketRepo(repoDir)
-  const alphaDir = path.join(work, 'data/watched', id, 'plugins', 'alpha')
-  // 上游无版本：先抹掉缓存 version，再导入（sourceHash 基于无版本内容）
-  fs.writeFileSync(path.join(alphaDir, '.claude-plugin/plugin.json'),
-    JSON.stringify({ name: 'alpha', description: 'alpha desc' }))
-  ingest(repoDir, alphaDir)
-  // 内容未再变动 → sourceHash == contentHash → 不报
+  withExtractedPackage(id, 'alpha', (root, sha) => ingest(repoDir, root, { sourceHash: sha }))
+  // 内容未再变动 → sourceHash == contentHash（同为 tree SHA）→ 不报
   expect(updateStatus()).toHaveLength(0)
 })
 
 test('updateStatus：无版本包内容变更，哈希兜底报 content 更新', async () => {
   const { cloneInto, updateStatus } = await import('@/lib/watched')
   const { ingest } = await import('@/lib/ingest')
+  const { withExtractedPackage, refreshWatched } = await import('@/lib/watched')
   const remote = remoteRepo('alpha')
   const id = 'alpha-repo'
+  commitTo(remote, {
+    'plugins/alpha/.claude-plugin/plugin.json': JSON.stringify({ name: 'alpha', description: 'alpha desc' }),
+  }, 'drop version')                                    // 无版本
   cloneInto(remote, path.join(work, 'data/watched', id))
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
   const repoDir = path.join(work, 'data/marketplace')
   initMarketRepo(repoDir)
-  const alphaDir = path.join(work, 'data/watched', id, 'plugins', 'alpha')
-  fs.writeFileSync(path.join(alphaDir, '.claude-plugin/plugin.json'),
-    JSON.stringify({ name: 'alpha', description: 'alpha desc' })) // 无版本
-  ingest(repoDir, alphaDir)                                       // 记录 sourceHash = H(S0)
-  fs.writeFileSync(path.join(alphaDir, 'NEW.md'), 'new content')  // 上游内容变更（仍无版本）
+  withExtractedPackage(id, 'alpha', (root, sha) => ingest(repoDir, root, { sourceHash: sha })) // sourceHash = tree(S0)
+  commitTo(remote, { 'plugins/alpha/NEW.md': 'new content' }, 'add file')  // 上游内容变更（仍无版本）
+  await refreshWatched(id)
   const ups = updateStatus()
   expect(ups).toHaveLength(1)
   expect(ups[0]).toMatchObject({ name: 'alpha', reason: 'content' })
@@ -381,10 +368,13 @@ test('updateStatus：远程版本非法（非 semver）时不按版本比对，�
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
   const repoDir = path.join(work, 'data/marketplace')
   initMarketRepo(repoDir)
-  ingest(repoDir, path.join(work, 'data/watched', id, 'plugins', 'alpha'))
+  const { withExtractedPackage, refreshWatched } = await import('@/lib/watched')
+  withExtractedPackage(id, 'alpha', (root, sha) => ingest(repoDir, root, { sourceHash: sha }))
   // 远程 version 改为非法字符串（内容随之变化）
-  fs.writeFileSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'),
-    JSON.stringify({ name: 'alpha', description: 'alpha desc', version: 'abc' }))
+  commitTo(remote, {
+    'plugins/alpha/.claude-plugin/plugin.json': JSON.stringify({ name: 'alpha', description: 'alpha desc', version: 'abc' }),
+  }, 'bad version')
+  await refreshWatched(id)
   const ups = updateStatus()
   // 非法版本不被当作版本更新；因内容已变，按内容哈希兜底报 content
   expect(ups).toHaveLength(1)
@@ -393,14 +383,12 @@ test('updateStatus：远程版本非法（非 semver）时不按版本比对，�
 
 test('updateStatus：引用型包无版本时不报（无内容哈希可比）', async () => {
   const { cloneInto, updateStatus } = await import('@/lib/watched')
-  const remote = remoteRepo('alpha')
+  // remote 里挂一个引用型包 external-pkg（无 version，root=null → 无 contentHash）
+  const remote = remoteRepo('alpha', {
+    name: 'm', plugins: [{ name: 'external-pkg', source: { url: 'https://x/pkg.git' }, description: 'e' }],
+  })
   const id = 'market-with-refs'
   cloneInto(remote, path.join(work, 'data/watched', id))
-  // 缓存里挂一个引用型包 external-pkg（无 version，root=null → 无 contentHash）
-  const cacheDir = path.join(work, 'data/watched', id)
-  fs.mkdirSync(path.join(cacheDir, '.claude-plugin'), { recursive: true })
-  fs.writeFileSync(path.join(cacheDir, '.claude-plugin', 'marketplace.json'),
-    JSON.stringify({ name: 'm', plugins: [{ name: 'external-pkg', source: { url: 'https://x/pkg.git' }, description: 'e' }] }))
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
   // 本地已导入 external-pkg（带 sourceHash），远程引用型无 contentHash → 兜底不成立
@@ -413,10 +401,11 @@ test('updateStatus：存量本地包无 sourceHash 时不报也不崩', async ()
   const { cloneInto, updateStatus } = await import('@/lib/watched')
   const remote = remoteRepo('alpha')
   const id = 'alpha-repo'
-  cloneInto(remote, path.join(work, 'data/watched', id))
   // 上游无版本（走内容兜底路径），但本地条目缺 sourceHash（存量导入）
-  fs.writeFileSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'),
-    JSON.stringify({ name: 'alpha', description: 'alpha desc' }))
+  commitTo(remote, {
+    'plugins/alpha/.claude-plugin/plugin.json': JSON.stringify({ name: 'alpha', description: 'alpha desc' }),
+  }, 'drop version')
+  cloneInto(remote, path.join(work, 'data/watched', id))
   fs.writeFileSync(path.join(work, 'data/watched.json'),
     JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
   initMarketWith(path.join(work, 'data/marketplace'),
@@ -425,13 +414,14 @@ test('updateStatus：存量本地包无 sourceHash 时不报也不崩', async ()
   expect(updateStatus()).toHaveLength(0)
 })
 
-test('updateStatus：同名包跨多个监听库时取最高版本', async () => {  const { cloneInto, updateStatus } = await import('@/lib/watched')
+test('updateStatus：同名包跨多个监听库时取最高版本', async () => {
+  const { cloneInto, updateStatus, withExtractedPackage } = await import('@/lib/watched')
   const { ingest } = await import('@/lib/ingest')
   const repoLow = remoteRepo('shared')   // shared v1.0.0
   const repoHigh = remoteRepo('shared')  // 另一个远程库同样有 shared，先建后升到 v2.0.0
-  fs.writeFileSync(path.join(repoHigh, 'plugins/shared/.claude-plugin/plugin.json'),
-    JSON.stringify({ name: 'shared', description: 'shared desc', version: '2.0.0' }))
-  execFileSync('git', ['commit', '-qam', 'bump'], { cwd: repoHigh })
+  commitTo(repoHigh, {
+    'plugins/shared/.claude-plugin/plugin.json': JSON.stringify({ name: 'shared', description: 'shared desc', version: '2.0.0' }),
+  }, 'bump')
 
   const idLow = 'shared-low'
   const idHigh = 'shared-high'
@@ -448,7 +438,7 @@ test('updateStatus：同名包跨多个监听库时取最高版本', async () =>
   // 本地导入 shared@1.0.0（低于两个远程版本）
   const repoDir = path.join(work, 'data/marketplace')
   initMarketRepo(repoDir)
-  ingest(repoDir, path.join(work, 'data/watched', idLow, 'plugins', 'shared'))
+  withExtractedPackage(idLow, 'shared', (root, sha) => ingest(repoDir, root, { sourceHash: sha }))
 
   const ups = updateStatus()
   expect(ups).toHaveLength(1)
@@ -477,7 +467,8 @@ test('commitWatchedToRepo + restoreWatchedFromRepo：列表随市场仓库持久
   fs.rmSync(path.join(work, 'data/watched', id), { recursive: true, force: true })
   await restoreWatchedFromRepo()
   expect(listWatched().map(r => r.id)).toEqual([id])
-  expect(fs.existsSync(path.join(work, 'data/watched', id, 'plugins/alpha/.claude-plugin/plugin.json'))).toBe(true)
+  // no-checkout：缓存克隆已重建，文件在 git 对象里可达（工作树为空）
+  expect(() => execFileSync('git', ['-C', path.join(work, 'data/watched', id), 'cat-file', '-e', 'HEAD:plugins/alpha/.claude-plugin/plugin.json'])).not.toThrow()
 })
 
 test('restoreWatchedFromRepo：本地已有列表时不覆盖', async () => {

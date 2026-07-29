@@ -8,7 +8,7 @@ import { REPO_DIR, stripCreds } from '@/lib/config'
 import { syncFromRemote, push, headOf, resetTo } from '@/lib/repo'
 import { ingest, discoverPackages, toKebab } from '@/lib/ingest'
 import { normalizeSource } from '@/lib/remote'
-import { packageRoot, cloneInto, updateStatus } from '@/lib/watched'
+import { withExtractedPackage, cloneInto, updateStatus } from '@/lib/watched'
 
 export async function GET() {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
@@ -50,17 +50,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 监听库文件包：从缓存 root 覆盖导入
-  const root = packageRoot(item.repoId, item.name)
-  if (!root) return NextResponse.json({ error: 'source package not found; refresh the repo' }, { status: 404 })
+  // 监听库文件包：从 git 对象提取后覆盖导入；sourceHash 传远程 tree SHA
   try {
-    const res = ingest(REPO_DIR, root, { overwrite: true, version: item.remoteVersion })
-    try {
-      push()
-    } catch (e) {
-      if (before) resetTo(before)
-      return NextResponse.json({ error: 'push failed', detail: stripCreds(String(e)) }, { status: 500 })
-    }
+    const res = withExtractedPackage(item.repoId, item.name, (root, treeSha) => {
+      const r = ingest(REPO_DIR, root, { overwrite: true, version: item.remoteVersion, sourceHash: treeSha })
+      try {
+        push()
+      } catch (e) {
+        if (before) resetTo(before)
+        throw new Error(`push failed: ${stripCreds(String(e))}`)
+      }
+      return r
+    })
+    if (!res) return NextResponse.json({ error: 'source package not found; refresh the repo' }, { status: 404 })
     return NextResponse.json(res)
   } catch (e) {
     return NextResponse.json({ error: stripCreds(String(e)) }, { status: 400 })
