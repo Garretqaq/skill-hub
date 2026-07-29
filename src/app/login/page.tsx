@@ -54,39 +54,36 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center p-4">
-      {/* Background decoration */}
+      {/* Background decoration - reduced intensity */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-fuchsia-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-1/4 left-1/4 w-[32rem] h-[32rem] bg-cyan-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-[32rem] h-[32rem] bg-fuchsia-500/5 rounded-full blur-3xl" />
       </div>
 
       {/* Login Card */}
       <div className="relative w-full max-w-md">
-        {/* Glow effect */}
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/20 via-fuchsia-500/20 to-cyan-500/20 rounded-3xl blur-2xl opacity-60" />
-
-        {/* Card */}
-        <div className="relative bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden">
+        {/* Card - removed excessive glow */}
+        <div className="relative bg-zinc-900/90 backdrop-blur-sm border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
           {/* Header */}
-          <div className="p-8 pb-6 text-center border-b border-zinc-800">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-cyan-500 to-fuchsia-500 rounded-2xl mb-6 shadow-[0_0_30px_rgba(0,217,255,0.4)]">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="p-8 pb-6 text-center border-b border-zinc-800/50">
+            <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-cyan-500 to-fuchsia-500 rounded-xl mb-5">
+              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-zinc-100 mb-2">管理员登录</h1>
-            <p className="text-zinc-400">登录后可上传和管理技能</p>
+            <h1 className="text-2xl font-bold text-zinc-100 mb-1.5">管理员登录</h1>
+            <p className="text-sm text-zinc-400">登录后可上传和管理技能</p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="p-8 space-y-6">
+          <form onSubmit={handleSubmit} className="p-8 space-y-5">
             {/* Error Message */}
             {error && (
-              <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 animate-in slide-in-from-top duration-300">
-                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-start gap-3 p-3.5 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400">
+                <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span className="text-sm">{error}</span>
+                <span className="text-sm leading-tight">{error}</span>
               </div>
             )}
 
@@ -95,18 +92,15 @@ export default function LoginPage() {
               <label htmlFor="username" className="block text-sm font-medium text-zinc-300">
                 用户名
               </label>
-              <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-fuchsia-500/10 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-300" />
-                <input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  className="relative w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 [&:-webkit-autofill]:!bg-zinc-900/50 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(24_24_27_/_0.5)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)]"
-                  placeholder="请输入用户名"
-                />
-              </div>
+              <input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="w-full px-4 py-2.5 bg-zinc-800/40 border border-zinc-700/50 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500/40 focus:bg-zinc-800/60 transition-all duration-200 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)!important] [&:-webkit-autofill:hover]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill:focus]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill:focus]:border-cyan-500/40"
+                placeholder="请输入用户名"
+              />
             </div>
 
             {/* Password */}
@@ -114,39 +108,33 @@ export default function LoginPage() {
               <label htmlFor="password" className="block text-sm font-medium text-zinc-300">
                 密码
               </label>
-              <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-fuchsia-500/10 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-300" />
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="relative w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 [&:-webkit-autofill]:!bg-zinc-900/50 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(24_24_27_/_0.5)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)]"
-                  placeholder="请输入密码"
-                />
-              </div>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full px-4 py-2.5 bg-zinc-800/40 border border-zinc-700/50 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500/40 focus:bg-zinc-800/60 transition-all duration-200 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)!important] [&:-webkit-autofill:hover]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill:focus]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill:focus]:border-cyan-500/40"
+                placeholder="请输入密码"
+              />
             </div>
 
             {/* Submit Button */}
             <button
               type="submit"
               disabled={loading || !username || !password}
-              className="w-full px-6 py-4 bg-gradient-to-r from-cyan-500 to-fuchsia-500 text-white rounded-xl font-bold text-lg hover:shadow-[0_0_40px_rgba(0,217,255,0.5)] focus:outline-none focus:ring-2 focus:ring-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 relative overflow-hidden group"
+              className="w-full px-6 py-3 bg-gradient-to-r from-cyan-500 to-fuchsia-500 text-white rounded-lg font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             >
-              <span className="relative z-10">
-                {loading ? '登录中...' : '登录'}
-              </span>
-              <div className="absolute inset-0 bg-gradient-to-r from-fuchsia-500 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              {loading ? '登录中...' : '登录'}
             </button>
 
             {/* Back Link */}
-            <div className="text-center pt-4">
+            <div className="text-center pt-2">
               <a
                 href="/"
-                className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-cyan-400 transition-colors group"
+                className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-cyan-400 transition-colors"
               >
-                <svg className="w-4 h-4 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
                 返回首页
