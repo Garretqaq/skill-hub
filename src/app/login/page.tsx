@@ -98,7 +98,8 @@ export default function LoginPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                className="w-full px-4 py-2.5 bg-zinc-800/40 border border-zinc-700/50 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500/40 focus:bg-zinc-800/60 transition-all duration-200 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)!important] [&:-webkit-autofill:hover]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill:focus]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill:focus]:border-cyan-500/40"
+                autoComplete="username"
+                className="w-full px-4 py-2.5 bg-zinc-800/50 border border-zinc-700/50 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500/40 focus:bg-zinc-800/70 transition-all duration-200 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(39_39_42_/_0.5)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)] [&:-webkit-autofill:hover]:shadow-[0_0_0_1000px_rgb(39_39_42_/_0.5)_inset] [&:-webkit-autofill:focus]:shadow-[0_0_0_1000px_rgb(39_39_42_/_0.7)_inset]"
                 placeholder="请输入用户名"
               />
             </div>
@@ -114,7 +115,8 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full px-4 py-2.5 bg-zinc-800/40 border border-zinc-700/50 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500/40 focus:bg-zinc-800/60 transition-all duration-200 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)!important] [&:-webkit-autofill:hover]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill:focus]:shadow-[0_0_0_1000px_rgb(39_39_42)_inset] [&:-webkit-autofill:focus]:border-cyan-500/40"
+                autoComplete="current-password"
+                className="w-full px-4 py-2.5 bg-zinc-800/50 border border-zinc-700/50 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500/40 focus:bg-zinc-800/70 transition-all duration-200 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(39_39_42_/_0.5)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)] [&:-webkit-autofill:hover]:shadow-[0_0_0_1000px_rgb(39_39_42_/_0.5)_inset] [&:-webkit-autofill:focus]:shadow-[0_0_0_1000px_rgb(39_39_42_/_0.7)_inset]"
                 placeholder="请输入密码"
               />
             </div>
