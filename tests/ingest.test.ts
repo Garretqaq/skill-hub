@@ -4,7 +4,7 @@ import { expect, test } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { ingest, previewEntries, hashPackageDir } from '@/lib/ingest'
+import { ingest, previewEntries, hashPackageDir, discoverPackagesFromGit } from '@/lib/ingest'
 import { readMarketplace } from '@/lib/marketplace'
 
 function tmp(): string {
@@ -353,4 +353,89 @@ test('ingest 在 manifest entry 写入 sourceHash（供无版本包更新检测�
   ingest(repo, mkSkill('a', 'body'))
   const entry = readMarketplace(repo).plugins.find(p => p.name === 'a')
   expect(entry?.sourceHash).toMatch(/^[0-9a-f]{64}$/)
+})
+
+// discoverPackagesFromGit 测试（git 对象读取模式）
+function gitRepo(setup: (dir: string) => void): string {
+  const dir = tmp()
+  execFileSync('git', ['init', '-q'], { cwd: dir })
+  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: dir })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: dir })
+  setup(dir)
+  execFileSync('git', ['add', '-A'], { cwd: dir })
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: dir })
+  return dir
+}
+
+test('discoverPackagesFromGit 从 git 对象发现插件', () => {
+  const repo = gitRepo(dir => {
+    fs.mkdirSync(path.join(dir, 'plugins/alpha/.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'plugins/alpha/.claude-plugin/plugin.json'),
+      JSON.stringify({ name: 'alpha', description: 'alpha desc', version: '1.0.0' }))
+  })
+  const pkgs = discoverPackagesFromGit(repo)
+  expect(pkgs).toHaveLength(1)
+  expect(pkgs[0]).toMatchObject({ name: 'alpha', kind: 'plugin', description: 'alpha desc', version: '1.0.0', root: 'plugins/alpha' })
+  expect(pkgs[0].contentHash).toMatch(/^[0-9a-f]{40}$/) // git tree SHA
+})
+
+test('discoverPackagesFromGit 从 git 对象发现 skill', () => {
+  const repo = gitRepo(dir => {
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), '---\nname: my-skill\ndescription: skill desc\nversion: 2.0.0\n---\nbody')
+  })
+  const pkgs = discoverPackagesFromGit(repo)
+  expect(pkgs).toHaveLength(1)
+  expect(pkgs[0]).toMatchObject({ name: 'my-skill', kind: 'skill', description: 'skill desc', version: '2.0.0', root: '' })
+  expect(pkgs[0].contentHash).toMatch(/^[0-9a-f]{40}$/)
+})
+
+test('discoverPackagesFromGit contentHash 是 git tree SHA', () => {
+  const repo = gitRepo(dir => {
+    fs.mkdirSync(path.join(dir, 'plugins/test/.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'plugins/test/.claude-plugin/plugin.json'),
+      JSON.stringify({ name: 'test', description: '' }))
+    fs.writeFileSync(path.join(dir, 'plugins/test/file.txt'), 'content')
+  })
+  const pkg = discoverPackagesFromGit(repo)[0]
+  // 验证 contentHash 是该目录的 tree SHA（通过 git rev-parse）
+  const treeSha = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD:plugins/test']).toString().trim()
+  expect(pkg.contentHash).toBe(treeSha)
+})
+
+test('discoverPackagesFromGit 引用型包 via marketplace.json', () => {
+  const repo = gitRepo(dir => {
+    fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(dir, '.claude-plugin/marketplace.json'),
+      JSON.stringify({ name: 'm', owner: { name: 'x' }, plugins: [
+        { name: 'ref-pkg', source: { url: 'https://github.com/ext/pkg.git' }, description: 'ref desc', version: '3.0.0' }
+      ]}))
+  })
+  const pkgs = discoverPackagesFromGit(repo)
+  expect(pkgs).toHaveLength(1)
+  expect(pkgs[0]).toMatchObject({ name: 'ref-pkg', kind: 'plugin', description: 'ref desc', version: '3.0.0', root: null, sourceUrl: 'https://github.com/ext/pkg.git' })
+  expect(pkgs[0].contentHash).toBeUndefined() // 引用型包无 contentHash
+})
+
+test('discoverPackagesFromGit 本地包优先于同名引用型', () => {
+  const repo = gitRepo(dir => {
+    fs.mkdirSync(path.join(dir, 'plugins/shared/.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'plugins/shared/.claude-plugin/plugin.json'),
+      JSON.stringify({ name: 'shared', description: 'local', version: '1.0.0' }))
+    fs.mkdirSync(path.join(dir, '.claude-plugin'), { recursive: true })
+    fs.writeFileSync(path.join(dir, '.claude-plugin/marketplace.json'),
+      JSON.stringify({ name: 'm', owner: { name: 'x' }, plugins: [
+        { name: 'shared', source: { url: 'https://github.com/ext/shared.git' }, description: 'remote' }
+      ]}))
+  })
+  const pkgs = discoverPackagesFromGit(repo)
+  expect(pkgs).toHaveLength(1)
+  expect(pkgs[0]).toMatchObject({ name: 'shared', description: 'local', root: 'plugins/shared' })
+})
+
+test('discoverPackagesFromGit 空仓库返回 []', () => {
+  const dir = tmp()
+  execFileSync('git', ['init', '-q'], { cwd: dir })
+  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: dir })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd: dir })
+  expect(discoverPackagesFromGit(dir)).toEqual([])
 })

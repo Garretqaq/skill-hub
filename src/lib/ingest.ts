@@ -251,7 +251,121 @@ export function findRoots(dir: string): FoundRoot[] {
   return out
 }
 
-export interface DiscoveredPackage { name: string; kind: 'plugin' | 'skill'; description: string; root: string | null; sourceUrl?: string; version?: string; contentHash?: string }
+export interface DiscoveredPackage {
+  name: string; kind: 'plugin' | 'skill'; description: string
+  /** filesystem 模式：绝对路径；git 模式：tree-relative 路径（空串=仓库根）；引用型包：null */
+  root: string | null
+  sourceUrl?: string; version?: string; contentHash?: string
+}
+
+// git-native 包发现：从 git 对象读取，无需工作树。
+// root 字段存 tree-relative 路径（空串 = 仓库根），引用型包为 null。
+export function discoverPackagesFromGit(repoDir: string): DiscoveredPackage[] {
+  let allFiles: string[]
+  try {
+    const out = execFileSync('git', ['-C', repoDir, 'ls-tree', '-r', '--name-only', 'HEAD'],
+      { stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim()
+    allFiles = out ? out.split('\n') : []
+  } catch {
+    return [] // 无 HEAD（空仓库）
+  }
+
+  // 从文件列表中提取候选包根（treePath + kind）
+  const candidates: { treePath: string; kind: 'plugin' | 'skill' }[] = []
+  for (const f of allFiles) {
+    if (f === '.claude-plugin/plugin.json') {
+      candidates.push({ treePath: '', kind: 'plugin' })
+    } else if (f.endsWith('/.claude-plugin/plugin.json')) {
+      candidates.push({ treePath: f.slice(0, f.length - '/.claude-plugin/plugin.json'.length), kind: 'plugin' })
+    } else if (f === 'SKILL.md') {
+      candidates.push({ treePath: '', kind: 'skill' })
+    } else if (f.endsWith('/SKILL.md')) {
+      candidates.push({ treePath: f.slice(0, f.length - '/SKILL.md'.length), kind: 'skill' })
+    }
+  }
+
+  // 按深度排序（浅的先），排除嵌套在已收录根内的子路径（仿 findRoots 的不下钻语义）
+  candidates.sort((a, b) => {
+    const da = a.treePath === '' ? 0 : a.treePath.split('/').length
+    const db = b.treePath === '' ? 0 : b.treePath.split('/').length
+    return da - db
+  })
+  const roots: { treePath: string; kind: 'plugin' | 'skill' }[] = []
+  for (const c of candidates) {
+    const covered = roots.some(r =>
+      r.treePath === c.treePath ||
+      r.treePath === '' || // 仓库根已覆盖所有子路径
+      c.treePath.startsWith(r.treePath + '/'),
+    )
+    if (!covered) roots.push(c)
+  }
+
+  // 从 git 对象读元数据，构建包条目
+  const packages: DiscoveredPackage[] = []
+  for (const { treePath, kind } of roots) {
+    const gitRef = (rel: string) => treePath ? `HEAD:${treePath}/${rel}` : `HEAD:${rel}`
+
+    // contentHash = 该包目录对应的 git tree SHA
+    let contentHash: string | undefined
+    try {
+      const treeRef = treePath ? `HEAD:${treePath}` : 'HEAD:'
+      const sha = execFileSync('git', ['-C', repoDir, 'rev-parse', treeRef],
+        { stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim()
+      if (sha) contentHash = sha
+    } catch { /* no contentHash */ }
+
+    let name: string
+    let description = ''
+    let version: string | undefined
+
+    if (kind === 'plugin') {
+      let pj: any
+      try {
+        pj = JSON.parse(execFileSync('git', ['-C', repoDir, 'show', gitRef('.claude-plugin/plugin.json')],
+          { stdio: ['ignore', 'pipe', 'pipe'] }).toString())
+      } catch { continue }
+      name = toKebab(pj.name || (treePath ? path.basename(treePath) : 'unknown'))
+      description = pj.description || ''
+      version = typeof pj.version === 'string' ? pj.version : undefined
+    } else {
+      let raw: string
+      try {
+        raw = execFileSync('git', ['-C', repoDir, 'show', gitRef('SKILL.md')],
+          { stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+      } catch { continue }
+      const fm = matter(raw).data
+      name = toKebab((fm.name as string | undefined) || (treePath ? path.basename(treePath) : 'unknown'))
+      description = (fm.description as string | undefined) || ''
+      version = typeof fm.version === 'string' ? fm.version : undefined
+    }
+
+    packages.push({ name, kind, description, root: treePath, sourceUrl: undefined, version, contentHash })
+  }
+
+  // 引用型包：marketplace.json 中有 source.url 且本地无同名包的条目
+  const localNames = new Set(packages.map(p => p.name))
+  try {
+    const marketplace = JSON.parse(
+      execFileSync('git', ['-C', repoDir, 'show', 'HEAD:.claude-plugin/marketplace.json'],
+        { stdio: ['ignore', 'pipe', 'pipe'] }).toString(),
+    )
+    if (Array.isArray(marketplace.plugins)) {
+      for (const entry of marketplace.plugins) {
+        if (entry.source?.url && entry.name) {
+          const kebabName = toKebab(entry.name)
+          if (localNames.has(kebabName)) continue
+          packages.push({
+            name: kebabName, kind: 'plugin', description: entry.description || '',
+            root: null, sourceUrl: entry.source.url,
+            version: typeof entry.version === 'string' ? entry.version : undefined,
+          })
+        }
+      }
+    }
+  } catch { /* 无 marketplace.json 或格式错误，静默跳过 */ }
+
+  return packages
+}
 
 export function discoverPackages(dir: string): DiscoveredPackage[] {
   const packages: DiscoveredPackage[] = []
