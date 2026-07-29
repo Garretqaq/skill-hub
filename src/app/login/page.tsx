@@ -103,7 +103,7 @@ export default function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
-                  className="relative w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300"
+                  className="relative w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 [&:-webkit-autofill]:!bg-zinc-900/50 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(24_24_27_/_0.5)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)]"
                   placeholder="请输入用户名"
                 />
               </div>
@@ -122,7 +122,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="relative w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300"
+                  className="relative w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 [&:-webkit-autofill]:!bg-zinc-900/50 [&:-webkit-autofill]:shadow-[0_0_0_1000px_rgb(24_24_27_/_0.5)_inset] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(244_244_245)]"
                   placeholder="请输入密码"
                 />
               </div>
