@@ -6,7 +6,7 @@ const execFileAsync = promisify(execFile)
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { discoverPackagesFromGit } from './ingest'
+import { discoverPackagesFromGit, toKebab } from './ingest'
 import { normalizeSource } from './remote'
 import { listPlugins, type PluginEntry } from './marketplace'
 import { isValidVersion, compareVersions } from './semver'
@@ -100,23 +100,31 @@ export async function cloneIntoAsync(url: string, dir: string): Promise<void> {
   await execFileAsync('git', ['clone', '--depth', '1', '--no-checkout', url, dir])
 }
 
-// 把包文件从 git 对象提取到临时目录供读写，用完即删（no-checkout 下无工作树可直接读）
-// 返回 null 表示包不存在或为引用型包（无本地文件）
-export function withExtractedPackage<T>(id: string, name: string, fn: (root: string, treeSha?: string) => T): T | null {
-  const dir = cacheDir(id)
-  if (!fs.existsSync(dir)) return null
-  const pkg = discoverPackagesFromGit(dir).find(p => p.name === name)
-  if (!pkg || pkg.root === null) return null   // 不存在，或引用型包（调用方另走临时克隆）
+// git archive 的 tar 流全量进内存；单包 512MB 远超实际（最大监听库 ~20MB），超限即抛错而非静默截断
+const ARCHIVE_MAX_BYTES = 512 * 1024 * 1024
+
+// 把某 no-checkout 仓库里指定包的文件从 git 对象提取到临时目录供读取，回调返回后即删。
+// 第二参回传该包的 git tree SHA（= discoverPackagesFromGit 的 contentHash），供 ingest 记为 sourceHash。
+// 返回 null 表示该仓库里没有这个包（含引用型条目——它没有本地文件）。
+export function withExtractedFromRepo<T>(repoDir: string, name: string, fn: (root: string, treeSha?: string) => T): T | null {
+  if (!fs.existsSync(repoDir)) return null
+  const pkg = discoverPackagesFromGit(repoDir).find(p => p.name === toKebab(name))
+  if (!pkg || pkg.root === null) return null
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-extract-'))
   try {
-    const treeRef = pkg.root ? `HEAD:${pkg.root}` : 'HEAD'
-    // git archive 输出 tar 流，剥掉前缀后直接落到 tmp 根
-    const tar = execFileSync('git', ['-C', dir, 'archive', treeRef], { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 512 * 1024 * 1024 })
+    // root 为空串时 `HEAD:` 即根 tree，与 contentHash 取值一致
+    const tar = execFileSync('git', ['-C', repoDir, 'archive', `HEAD:${pkg.root}`],
+      { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: ARCHIVE_MAX_BYTES })
     execFileSync('tar', ['-x', '-C', tmp], { input: tar, stdio: ['pipe', 'pipe', 'pipe'] })
     return fn(tmp, pkg.contentHash)
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true })
   }
+}
+
+// 同上，但目标是某监听库的缓存克隆
+export function withExtractedPackage<T>(id: string, name: string, fn: (root: string, treeSha?: string) => T): T | null {
+  return withExtractedFromRepo(cacheDir(id), name, fn)
 }
 
 async function runPool<T>(tasks: (() => Promise<T>)[], concurrency: number): Promise<T[]> {
@@ -248,7 +256,6 @@ export function search(q: string): IndexedPackage[] {
   if (!kw) return all
   return all.filter(p => p.name.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw))
 }
-
 
 export interface UpdateItem {
   name: string

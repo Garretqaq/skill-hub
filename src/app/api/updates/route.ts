@@ -6,9 +6,9 @@ import path from 'node:path'
 import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
 import { syncFromRemote, push, headOf, resetTo } from '@/lib/repo'
-import { ingest, discoverPackages, toKebab } from '@/lib/ingest'
+import { ingest } from '@/lib/ingest'
 import { normalizeSource } from '@/lib/remote'
-import { withExtractedPackage, cloneInto, updateStatus } from '@/lib/watched'
+import { withExtractedPackage, withExtractedFromRepo, cloneInto, updateStatus } from '@/lib/watched'
 
 export async function GET() {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
@@ -26,45 +26,36 @@ export async function POST(req: NextRequest) {
   syncFromRemote() // 先与远程对齐（含 ensureRepo），避免 remote 领先时 push 非快进被拒
   const before = headOf()
 
-  // 引用型包：临时克隆源仓库
-  if (item.sourceUrl) {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-upd-'))
-    try {
-      cloneInto(normalizeSource(item.sourceUrl), tmp)
-      const pkg = discoverPackages(tmp).find(p => toKebab(p.name) === toKebab(item.name))
-      if (!pkg || !pkg.root) {
-        return NextResponse.json({ error: `package "${item.name}" not found in remote` }, { status: 404 })
-      }
-      const res = ingest(REPO_DIR, pkg.root, { overwrite: true, version: item.remoteVersion })
-      try {
-        push()
-      } catch (e) {
-        if (before) resetTo(before)
-        return NextResponse.json({ error: 'push failed', detail: stripCreds(String(e)) }, { status: 500 })
-      }
-      return NextResponse.json(res)
-    } catch (e) {
-      return NextResponse.json({ error: stripCreds(String(e)) }, { status: 400 })
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true })
-    }
-  }
+  // 提取包文件并覆盖导入；sourceHash 传源仓库的 git tree SHA（与 contentHash 同源可比）
+  const doIngest = (root: string, treeSha?: string) =>
+    ingest(REPO_DIR, root, { overwrite: true, version: item.remoteVersion, sourceHash: treeSha })
 
-  // 监听库文件包：从 git 对象提取后覆盖导入；sourceHash 传远程 tree SHA
+  let res
   try {
-    const res = withExtractedPackage(item.repoId, item.name, (root, treeSha) => {
-      const r = ingest(REPO_DIR, root, { overwrite: true, version: item.remoteVersion, sourceHash: treeSha })
+    if (item.sourceUrl) {
+      // 引用型包：临时克隆源仓库后从 git 对象提取
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-upd-'))
       try {
-        push()
-      } catch (e) {
-        if (before) resetTo(before)
-        throw new Error(`push failed: ${stripCreds(String(e))}`)
+        cloneInto(normalizeSource(item.sourceUrl), tmp)
+        res = withExtractedFromRepo(tmp, item.name, doIngest)
+        if (!res) return NextResponse.json({ error: `package "${item.name}" not found in remote` }, { status: 404 })
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true })
       }
-      return r
-    })
-    if (!res) return NextResponse.json({ error: 'source package not found; refresh the repo' }, { status: 404 })
-    return NextResponse.json(res)
+    } else {
+      // 监听库文件包：直接从缓存克隆的 git 对象提取
+      res = withExtractedPackage(item.repoId, item.name, doIngest)
+      if (!res) return NextResponse.json({ error: 'source package not found; refresh the repo' }, { status: 404 })
+    }
   } catch (e) {
     return NextResponse.json({ error: stripCreds(String(e)) }, { status: 400 })
   }
+
+  try {
+    push()
+  } catch (e) {
+    if (before) resetTo(before)
+    return NextResponse.json({ error: 'push failed', detail: stripCreds(String(e)) }, { status: 500 })
+  }
+  return NextResponse.json(res)
 }

@@ -5,9 +5,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { getUser } from '@/lib/session'
 import { stripCreds } from '@/lib/config'
-import { previewEntries, discoverPackages, toKebab } from '@/lib/ingest'
+import { previewEntries } from '@/lib/ingest'
 import { normalizeSource } from '@/lib/remote'
-import { withExtractedPackage, cloneInto } from '@/lib/watched'
+import { withExtractedPackage, withExtractedFromRepo, cloneInto } from '@/lib/watched'
 
 export async function GET(req: NextRequest) {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
@@ -26,9 +26,9 @@ export async function GET(req: NextRequest) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-preview-'))
   try {
     cloneInto(normalizeSource(sourceUrl), tmp)
-    const pkg = discoverPackages(tmp).find(p => toKebab(p.name) === toKebab(name))
-    if (!pkg?.root) return NextResponse.json({ error: `package "${name}" not found in remote repository` }, { status: 404 })
-    return NextResponse.json({ entries: previewEntries(pkg.root) })
+    const refEntries = withExtractedFromRepo(tmp, name, root => previewEntries(root))
+    if (!refEntries) return NextResponse.json({ error: `package "${name}" not found in remote repository` }, { status: 404 })
+    return NextResponse.json({ entries: refEntries })
   } catch (e) {
     return NextResponse.json({ error: stripCreds(String(e)) }, { status: 400 })
   } finally {

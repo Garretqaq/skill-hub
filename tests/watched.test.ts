@@ -539,3 +539,42 @@ test('groupPackagesByRepo：空数组返回空分组', async () => {
   const { groupPackagesByRepo } = await import('@/lib/watched')
   expect(groupPackagesByRepo([])).toEqual([])
 })
+
+// 引用型包导入/预览走「临时克隆 + 从 git 对象提取」，克隆同为 no-checkout；
+// 这条路径此前无覆盖，cloneInto 改 --no-checkout 时曾静默失效（恒 404）
+test('withExtractedFromRepo：对任意 no-checkout 克隆提取包（引用型包路径）', async () => {
+  const { cloneInto, withExtractedFromRepo } = await import('@/lib/watched')
+  const remote = remoteRepo('alpha')
+  const tmpClone = path.join(work, 'tmp-ref-clone')
+  cloneInto(remote, tmpClone)                       // 同引用型包路径：no-checkout 克隆
+  expect(fs.readdirSync(tmpClone)).toEqual(['.git']) // 工作树确实为空
+
+  const got = withExtractedFromRepo(tmpClone, 'alpha', (root, sha) => ({
+    hasManifest: fs.existsSync(path.join(root, '.claude-plugin/plugin.json')),
+    sha,
+  }))
+  expect(got?.hasManifest).toBe(true)               // 文件提取成功
+  expect(got?.sha).toMatch(/^[0-9a-f]{40}$/)        // 带回 tree SHA，供 ingest 记为 sourceHash
+  expect(withExtractedFromRepo(tmpClone, 'nope', () => 'x')).toBeNull()
+})
+
+test('withExtractedFromRepo：ingest 记录的 sourceHash 与远程 contentHash 同源可比', async () => {
+  const { cloneInto, withExtractedFromRepo, buildIndex } = await import('@/lib/watched')
+  const { ingest } = await import('@/lib/ingest')
+  const { listPlugins } = await import('@/lib/marketplace')
+  const remote = remoteRepo('alpha')
+  const id = 'alpha-repo'
+  cloneInto(remote, path.join(work, 'data/watched', id))
+  fs.writeFileSync(path.join(work, 'data/watched.json'),
+    JSON.stringify({ repos: [{ id, source: remote, url: remote, addedAt: 'x' }] }))
+  const repoDir = path.join(work, 'data/marketplace')
+  initMarketRepo(repoDir)
+
+  withExtractedFromRepo(path.join(work, 'data/watched', id), 'alpha',
+    (root, sha) => ingest(repoDir, root, { sourceHash: sha }))
+
+  // 导入记录的 sourceHash 应等于索引里该包的 contentHash（否则无版本包会永久误报更新）
+  const local = listPlugins(repoDir).find(p => p.name === 'alpha')
+  const remotePkg = buildIndex().find(p => p.name === 'alpha')
+  expect(local?.sourceHash).toBe(remotePkg?.contentHash)
+})
