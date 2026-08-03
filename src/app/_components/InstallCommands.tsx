@@ -21,7 +21,7 @@ function parseOwnerRepo(url: string): { owner: string; repo: string } | null {
 export default function InstallCommands({ market, repoUrl, name }: InstallCommandsProps) {
   const [copied, setCopied] = useState<string | null>(null)
   const [origin, setOrigin] = useState('') // 客户端挂载后取，SSR 阶段为空
-  const [client, setClient] = useState<'claude' | 'codex'>('claude')
+  const [client, setClient] = useState<'claude' | 'codex' | 'omp'>('claude')
 
   useEffect(() => setOrigin(window.location.origin), [])
 
@@ -30,17 +30,23 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
   const proxyUrl = origin && or ? `${origin}/proxy/${or.owner}/${or.repo}.git` : ''
 
   // 各客户端命令串：同结构动态生成，仅前缀/子命令/flag 不同
-  const cmds = client === 'claude'
-    ? {
-        install: `/plugin install ${name}@${market}`,
-        addDirect: `/plugin marketplace add ${repoUrl}`,
-        addProxy: `/plugin marketplace add ${proxyUrl}`,
-      }
-    : {
-        install: `codex plugin add ${name}@${market} --json`,
-        addDirect: `codex plugin marketplace add ${repoUrl}`,
-        addProxy: `codex plugin marketplace add ${proxyUrl}`,
-      }
+  const cmds = {
+    claude: {
+      install: `/plugin install ${name}@${market}`,
+      addDirect: `/plugin marketplace add ${repoUrl}`,
+      addProxy: `/plugin marketplace add ${proxyUrl}`,
+    },
+    codex: {
+      install: `codex plugin add ${name}@${market} --json`,
+      addDirect: `codex plugin marketplace add ${repoUrl}`,
+      addProxy: `codex plugin marketplace add ${proxyUrl}`,
+    },
+    omp: {
+      install: `omp plugin install ${name}@${market}`,
+      addDirect: `omp plugin marketplace add ${repoUrl}`,
+      addProxy: `omp plugin marketplace add ${proxyUrl}`,
+    },
+  }[client]
 
   const copyToClipboard = async (text: string, id: string) => {
     try {
@@ -88,9 +94,9 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
         安装命令
       </h3>
 
-      {/* 客户端切换：Claude Code / Codex */}
+      {/* 客户端切换：Claude Code / Codex / Oh My Pi */}
       <div className="flex gap-2">
-        {(['claude', 'codex'] as const).map((c) => (
+        {(['claude', 'codex', 'omp'] as const).map((c) => (
           <button
             key={c}
             onClick={() => setClient(c)}
@@ -100,16 +106,18 @@ export default function InstallCommands({ market, repoUrl, name }: InstallComman
                 : 'bg-zinc-900/30 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
             }`}
           >
-            {c === 'claude' ? 'Claude Code' : 'Codex'}
+            {c === 'claude' ? 'Claude Code' : c === 'codex' ? 'Codex' : 'Oh My Pi'}
           </button>
         ))}
       </div>
 
-      {/* 执行环境提示：claude 在会话内执行，codex 在终端直接执行 */}
+      {/* 执行环境提示：claude 在会话内执行，codex / omp 在终端直接执行 */}
       <div className="text-xs text-zinc-500 leading-relaxed">
         {client === 'claude'
           ? '先运行 claude 启动会话，再在会话内执行下列斜杠命令。'
-          : '在终端直接执行下列命令，无需先启动 codex。'}
+          : client === 'codex'
+            ? '在终端直接执行下列命令，无需先启动 codex。'
+            : '在终端直接执行下列命令，无需先启动 omp。'}
       </div>
 
       {/* 安装技能：最常用，置顶常显 */}
