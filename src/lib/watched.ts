@@ -11,6 +11,7 @@ import { normalizeSource } from './remote'
 import { listPlugins, type PluginEntry } from './marketplace'
 import { isValidVersion, compareVersions } from './semver'
 import { DATA_DIR, REPO_DIR } from './config'
+import { proxyArgsFor } from './proxy'
 import { withWorkTree } from './worktree'
 
 export interface WatchedRepo { id: string; source: string; url: string; addedAt: string }
@@ -91,13 +92,13 @@ export async function restoreWatchedFromRepo(): Promise<void> {
 export function cloneInto(url: string, dir: string): void {
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(path.dirname(dir), { recursive: true })
-  execFileSync('git', ['clone', '--depth', '1', '--no-checkout', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
+  execFileSync('git', [...proxyArgsFor(url), 'clone', '--depth', '1', '--no-checkout', url, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
 export async function cloneIntoAsync(url: string, dir: string): Promise<void> {
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(path.dirname(dir), { recursive: true })
-  await execFileAsync('git', ['clone', '--depth', '1', '--no-checkout', url, dir])
+  await execFileAsync('git', [...proxyArgsFor(url), 'clone', '--depth', '1', '--no-checkout', url, dir])
 }
 
 // git archive 的 tar 流全量进内存；单包 512MB 远超实际（最大监听库 ~20MB），超限即抛错而非静默截断
@@ -171,7 +172,7 @@ async function refreshOne(id: string): Promise<void> {
   if (!repo) throw new Error(`not watching: ${id}`)
   const dir = cacheDir(id)
   try {
-    await execFileAsync('git', ['fetch', '--depth', '1', 'origin'], { cwd: dir })
+    await execFileAsync('git', [...proxyArgsFor(repo.url), 'fetch', '--depth', '1', 'origin'], { cwd: dir })
     // no-checkout 仓库用 reset --soft：只挪 HEAD，不碰 index/工作树
     await execFileAsync('git', ['reset', '--soft', 'FETCH_HEAD'], { cwd: dir })
   } catch {

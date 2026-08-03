@@ -4,14 +4,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { REPO_DIR, MARKETPLACE_NAME } from './config'
 import { getRepoUrl } from './settings'
+import { proxyArgsFor } from './proxy'
 
 // 容器内以 root 运行且无全局 git 身份，注入 committer/author 身份避免 commit 报 "Author identity unknown"
 const GIT_IDENTITY = {
   GIT_AUTHOR_NAME: 'skill-hub', GIT_AUTHOR_EMAIL: 'skill-hub@localhost',
   GIT_COMMITTER_NAME: 'skill-hub', GIT_COMMITTER_EMAIL: 'skill-hub@localhost',
 }
-function git(dir: string, args: string[]): string {
-  return execFileSync('git', args, {
+// net 传目标远程地址表示这条命令要出网，据此决定是否前插 -c http.proxy（见 proxy.ts）
+function git(dir: string, args: string[], net?: string): string {
+  return execFileSync('git', [...(net ? proxyArgsFor(net) : []), ...args], {
     cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...GIT_IDENTITY },
   }).toString()
 }
@@ -46,7 +48,7 @@ export function ensureRepo(): void {
     fs.mkdirSync(path.dirname(REPO_DIR), { recursive: true })
     const url = getRepoUrl()
     if (url) {
-      execFileSync('git', ['clone', '--no-checkout', url, REPO_DIR], { stdio: 'inherit' })
+      execFileSync('git', [...proxyArgsFor(url), 'clone', '--no-checkout', url, REPO_DIR], { stdio: 'inherit' })
     } else {
       git(REPO_DIR, ['init', '-q'])
     }
@@ -64,8 +66,9 @@ export function ensureRepo(): void {
 }
 
 export function push(): void {
-  if (!getRepoUrl()) return // 无远程（本地 init）时跳过
-  git(REPO_DIR, ['push', '-u', 'origin', 'HEAD']) // -u 兼容后配远程、无上游追踪的情况
+  const url = getRepoUrl()
+  if (!url) return // 无远程（本地 init）时跳过
+  git(REPO_DIR, ['push', '-u', 'origin', 'HEAD'], url) // -u 兼容后配远程、无上游追踪的情况
 }
 
 export function setRemoteUrlIn(dir: string, url: string): void {
@@ -85,9 +88,9 @@ export function setRemoteUrl(url: string): void {
 // 远程为准拉取覆盖本地；但本地有未推送提交时保留本地。no-checkout：reset --mixed 不 checkout 工作目录。
 export function syncFromRemoteIn(dir: string, url: string): void {
   setRemoteUrlIn(dir, url)                                           // 确保 origin 指向目标
-  const heads = git(dir, ['ls-remote', '--heads', 'origin']).trim()
+  const heads = git(dir, ['ls-remote', '--heads', 'origin'], url).trim()
   if (!heads) return                                                 // 远程无分支/提交，跳过
-  git(dir, ['fetch', 'origin'])
+  git(dir, ['fetch', 'origin'], url)
   let branch = 'master'
   try { branch = git(dir, ['symbolic-ref', '--short', 'HEAD']).trim() || 'master' } catch { /* detached/无 HEAD 时兜底 master */ }
   const upstream = `origin/${branch}`

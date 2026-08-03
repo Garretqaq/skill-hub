@@ -19,9 +19,14 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
   const [token, setToken] = useState('')
   const [name, setName] = useState('')
   const [hasToken, setHasToken] = useState(false)
+  const [proxyUrl, setProxyUrl] = useState('')
+  const [proxyAuth, setProxyAuth] = useState('')
+  const [noProxy, setNoProxy] = useState('')
+  const [hasProxyAuth, setHasProxyAuth] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [testing, setTesting] = useState(false)
   const { toasts, hideToast, success, error } = useToast()
 
   const handleRefresh = async () => {
@@ -42,6 +47,27 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
     }
   }
 
+  const handleTest = async () => {
+    setTesting(true)
+    try {
+      const res = await fetch('/api/settings/proxy-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxyUrl: proxyUrl.trim(), proxyAuth: proxyAuth.trim() }),
+      })
+      const d = await res.json()
+      if (!res.ok) {
+        error(`代理不通: ${d.detail || d.error}`)
+        return
+      }
+      success(`代理可用，耗时 ${d.ms}ms`)
+    } catch (err) {
+      error(`测试失败: ${err}`)
+    } finally {
+      setTesting(false)
+    }
+  }
+
   useEffect(() => {
     fetch('/api/settings')
       .then((r) => r.json())
@@ -49,6 +75,9 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
         setRepoUrl(d.repoUrl || '')
         setName(d.name || '')
         setHasToken(!!d.hasToken)
+        setProxyUrl(d.proxyUrl || '')
+        setNoProxy(d.noProxy || '')
+        setHasProxyAuth(!!d.hasProxyAuth)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -61,7 +90,10 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repoUrl: repoUrl.trim(), token: token.trim(), name: name.trim() }),
+        body: JSON.stringify({
+          repoUrl: repoUrl.trim(), token: token.trim(), name: name.trim(),
+          proxyUrl: proxyUrl.trim(), proxyAuth: proxyAuth.trim(), noProxy: noProxy.trim(),
+        }),
       })
       if (!res.ok) {
         error(`保存失败: ${await res.text()}`)
@@ -98,7 +130,7 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
             <div className="space-y-2">
               <label htmlFor="repo-url" className="block text-sm font-medium text-zinc-300">
                 远程 Git 仓库地址
@@ -149,6 +181,73 @@ export default function SettingsForm({ onClose }: SettingsFormProps) {
               />
               <p className="text-sm text-zinc-500">
                 单独保存，不会回显。推送时自动注入到地址中。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="proxy-url" className="block text-sm font-medium text-zinc-300">
+                代理地址
+              </label>
+              <div className="flex gap-3">
+                <input
+                  id="proxy-url"
+                  type="text"
+                  value={proxyUrl}
+                  onChange={(e) => setProxyUrl(e.target.value)}
+                  placeholder={loading ? '加载中...' : 'http://127.0.0.1:7890（留空停用）'}
+                  disabled={loading}
+                  className="flex-1 min-w-0 px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={handleTest}
+                  disabled={loading || testing || !proxyUrl.trim()}
+                  className="px-4 py-3 bg-zinc-800 text-zinc-300 rounded-lg font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {testing ? '测试中...' : '测试'}
+                </button>
+              </div>
+              <p className="text-sm text-zinc-500">
+                拉取远程仓库与监听库时使用。支持 http/https/socks5，
+                <span className="text-zinc-400">socks5 仅对 git 拉取生效，/proxy 代理路由不支持</span>。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="proxy-auth" className="block text-sm font-medium text-zinc-300">
+                代理认证
+              </label>
+              <input
+                id="proxy-auth"
+                type="password"
+                value={proxyAuth}
+                onChange={(e) => setProxyAuth(e.target.value)}
+                placeholder={loading ? '加载中...' : hasProxyAuth ? '已配置，留空则保留原值' : 'user:pass（无需认证则留空）'}
+                disabled={loading}
+                autoComplete="new-password"
+                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 disabled:opacity-50"
+              />
+              <p className="text-sm text-zinc-500">
+                单独保存，不会回显。使用时注入到代理地址中。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="no-proxy" className="block text-sm font-medium text-zinc-300">
+                不走代理的 host
+              </label>
+              <input
+                id="no-proxy"
+                type="text"
+                value={noProxy}
+                onChange={(e) => setNoProxy(e.target.value)}
+                placeholder={loading ? '加载中...' : 'git.corp.com, 10.0.0.1'}
+                disabled={loading}
+                className="w-full px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 disabled:opacity-50"
+              />
+              <p className="text-sm text-zinc-500">
+                逗号分隔。按后缀匹配：<code className="text-cyan-400">corp.com</code> 同时命中{' '}
+                <code className="text-cyan-400">git.corp.com</code>。
               </p>
             </div>
 

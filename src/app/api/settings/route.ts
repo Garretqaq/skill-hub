@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUser } from '@/lib/session'
 import { REPO_DIR, stripCreds } from '@/lib/config'
 import { getSettings, saveSettings, getRepoUrl, getMarketName } from '@/lib/settings'
+import { validateProxyUrl } from '@/lib/proxy'
 import { writeMarketName } from '@/lib/marketplace'
 import { setRemoteUrl, ensureRepo, push, headOf, resetTo, syncFromRemote } from '@/lib/repo'
 
@@ -13,11 +14,23 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const { repoUrl, token, name } = await req.json()
+  const { repoUrl, token, name, proxyUrl, proxyAuth, noProxy } = await req.json()
   const url = typeof repoUrl === 'string' ? repoUrl.trim() : ''
   if (!url) return NextResponse.json({ error: 'repoUrl required' }, { status: 400 })
 
-  saveSettings(url, typeof token === 'string' ? token.trim() : undefined)
+  let proxy: { proxyUrl?: string; proxyAuth?: string; noProxy?: string } | undefined
+  try {
+    proxy = {
+      proxyUrl: typeof proxyUrl === 'string' ? validateProxyUrl(proxyUrl) : undefined,
+      proxyAuth: typeof proxyAuth === 'string' ? proxyAuth.trim() : undefined,
+      noProxy: typeof noProxy === 'string' ? noProxy.trim() : undefined,
+    }
+  } catch (e) {
+    return NextResponse.json({ error: 'invalid proxy', detail: stripCreds(String(e)) }, { status: 400 })
+  }
+
+  // 代理先落盘：下面的 syncFromRemote 要用新代理出网
+  saveSettings(url, typeof token === 'string' ? token.trim() : undefined, proxy)
   try {
     setRemoteUrl(getRepoUrl()) // 用注入 token 后的完整地址更新 origin
   } catch (e) {

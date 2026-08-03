@@ -19,7 +19,8 @@ export function stripCreds(s: string): string {
     u.password = ''
     return u.toString()
   } catch {
-    // 非纯 URL（如 git 错误消息）：替换消息中嵌入的 https://user:pass@host 或 https://token@host
-    return s.replace(/https?:\/\/[^@\s]+@/g, 'https://')
+    // 非纯 URL（如 git 错误消息）：替换消息中嵌入的 <scheme>://user:pass@host。
+    // 协议不限于 http(s)——代理地址可能是 socks5://user:pass@host，同样不能泄露
+    return s.replace(/([a-z][a-z0-9+.-]*:\/\/)[^@\s/]+@/gi, '$1')
   }
 }
