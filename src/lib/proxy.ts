@@ -51,7 +51,8 @@ export function withProxyAuth(base: string, auth?: string): string {
     const i = auth.indexOf(':')
     u.username = i < 0 ? auth : auth.slice(0, i)
     u.password = i < 0 ? '' : auth.slice(i + 1)
-    return u.toString()
+    // toString() 会给无路径的地址补出尾斜杠（host:port/），代理地址不该带路径，去掉
+    return u.pathname === '/' && !u.search && !u.hash ? u.toString().replace(/\/$/, '') : u.toString()
   } catch {
     return base
   }

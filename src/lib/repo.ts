@@ -11,11 +11,23 @@ const GIT_IDENTITY = {
   GIT_AUTHOR_NAME: 'skill-hub', GIT_AUTHOR_EMAIL: 'skill-hub@localhost',
   GIT_COMMITTER_NAME: 'skill-hub', GIT_COMMITTER_EMAIL: 'skill-hub@localhost',
 }
+// execFileSync 抛出的 Error.message 只有 "Command failed: <cmd>"，git 真正的原因在 stderr 里。
+// 不拼进来的话，接口只能返回一条没有诊断价值的命令回显。（调用方仍需 stripCreds 脱敏）
+function withStderr(e: unknown): Error {
+  const err = e as { stderr?: Buffer | string; message?: string }
+  const detail = err.stderr ? String(err.stderr).trim() : ''
+  return new Error(detail ? `${err.message ?? String(e)}\n${detail}` : String(e))
+}
+
 // net 传目标远程地址表示这条命令要出网，据此决定是否前插 -c http.proxy（见 proxy.ts）
 function git(dir: string, args: string[], net?: string): string {
-  return execFileSync('git', [...(net ? proxyArgsFor(net) : []), ...args], {
-    cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...GIT_IDENTITY },
-  }).toString()
+  try {
+    return execFileSync('git', [...(net ? proxyArgsFor(net) : []), ...args], {
+      cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...GIT_IDENTITY },
+    }).toString()
+  } catch (e) {
+    throw withStderr(e)
+  }
 }
 
 // 清空工作目录（保留 .git），用于迁移旧式工作副本 + 首次提交后回到 no-checkout 形态
@@ -48,7 +60,13 @@ export function ensureRepo(): void {
     fs.mkdirSync(path.dirname(REPO_DIR), { recursive: true })
     const url = getRepoUrl()
     if (url) {
-      execFileSync('git', [...proxyArgsFor(url), 'clone', '--no-checkout', url, REPO_DIR], { stdio: 'inherit' })
+      // 用 pipe 而非 inherit：失败原因要能随接口返回，否则只能去翻容器日志
+      try {
+        execFileSync('git', [...proxyArgsFor(url), 'clone', '--no-checkout', url, REPO_DIR],
+          { stdio: ['ignore', 'pipe', 'pipe'] })
+      } catch (e) {
+        throw withStderr(e)
+      }
     } else {
       git(REPO_DIR, ['init', '-q'])
     }

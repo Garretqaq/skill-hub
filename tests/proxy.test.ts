@@ -32,8 +32,8 @@ test('validateProxyUrl: 允许 http/https/socks5，拒绝其它', () => {
 })
 
 test('withProxyAuth: user:pass 注入到用户名密码位', () => {
-  expect(withProxyAuth('http://h:7890', 'u:p')).toBe('http://u:p@h:7890/')
-  expect(withProxyAuth('http://h:7890', 'u')).toBe('http://u@h:7890/')
+  expect(withProxyAuth('http://h:7890', 'u:p')).toBe('http://u:p@h:7890')
+  expect(withProxyAuth('http://h:7890', 'u')).toBe('http://u@h:7890')
   expect(withProxyAuth('http://h:7890', undefined)).toBe('http://h:7890')
   expect(withProxyAuth('', 'u:p')).toBe('')
 })
@@ -75,7 +75,7 @@ test('proxyArgsFor: 配了代理则前插 -c，命中 noProxy 与非 http 目标
 
 test('getProxyUrl: 单独保存的 proxyAuth 注入进地址', async () => {
   await inTmpDir({ proxyUrl: 'http://127.0.0.1:7890', proxyAuth: 'u:p' }, m => {
-    expect(m.getProxyUrl()).toBe('http://u:p@127.0.0.1:7890/')
+    expect(m.getProxyUrl()).toBe('http://u:p@127.0.0.1:7890')
     expect(m.getProxyAuth()).toBe('u:p')
   })
 })

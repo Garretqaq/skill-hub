@@ -12,9 +12,12 @@ export const ADMIN_USER = process.env.ADMIN_USER || ''
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 
 export function stripCreds(s: string): string {
-  // 先尝试作为完整 URL 处理
+  // 先尝试作为完整 URL 处理。必须校验 host：'error: Command failed: ...' 这类错误消息
+  // 会被 Node 当成 scheme 为 'error:' 的合法 URL 解析，host 为空，清 username 毫无作用，
+  // 结果原样返回、凭据全泄露——所以 host 为空时必须落到下面的正则分支。
   try {
     const u = new URL(s)
+    if (!u.host) throw new Error('not a network url')
     u.username = ''
     u.password = ''
     return u.toString()
