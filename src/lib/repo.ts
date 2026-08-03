@@ -55,15 +55,21 @@ export function resetToIn(dir: string, head: string): void {
 }
 export function resetTo(head: string): void { resetToIn(REPO_DIR, head) }
 
-export function ensureRepo(): void {
+// 返回值表示本次是否新克隆了仓库：克隆结果即远程最新，调用方可省掉紧随其后的 fetch
+export function ensureRepo(): boolean {
+  let cloned = false
   if (!fs.existsSync(path.join(REPO_DIR, '.git'))) {
     fs.mkdirSync(path.dirname(REPO_DIR), { recursive: true })
     const url = getRepoUrl()
     if (url) {
+      // --depth 1：本应用从不读历史（读走 git show HEAD:/ls-tree HEAD），浅克隆省掉首次保存的大头。
+      // 不用 --filter=blob:none——no-checkout 架构下每次 git show 都会回源取 blob，
+      // 且 withWorkTree 的 checkout 会一次性把 blob 全拉回来，收益还回去了。
       // 用 pipe 而非 inherit：失败原因要能随接口返回，否则只能去翻容器日志
       try {
-        execFileSync('git', [...proxyArgsFor(url), 'clone', '--no-checkout', url, REPO_DIR],
+        execFileSync('git', [...proxyArgsFor(url), 'clone', '--depth', '1', '--no-checkout', url, REPO_DIR],
           { stdio: ['ignore', 'pipe', 'pipe'] })
+        cloned = true
       } catch (e) {
         throw withStderr(e)
       }
@@ -81,6 +87,7 @@ export function ensureRepo(): void {
     git(REPO_DIR, ['commit', '-q', '-m', 'init marketplace'])
     clearWorkTree(REPO_DIR)
   }
+  return cloned
 }
 
 export function push(): void {
@@ -122,7 +129,7 @@ export function syncFromRemoteIn(dir: string, url: string): void {
   git(dir, ['reset', '--mixed', upstream])                           // 移动分支引用 + 重置 index，不动工作目录
 }
 export function syncFromRemote(): void {
-  ensureRepo()                                              // .git 缺失时 clone（clone 即已同步）
+  if (ensureRepo()) return                                  // 本次刚 clone，已是远程最新，无需再 ls-remote+fetch
   const url = getRepoUrl()
   if (!url) return                                          // 无远程（本地 init），跳过
   syncFromRemoteIn(REPO_DIR, url)

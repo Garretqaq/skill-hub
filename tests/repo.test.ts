@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { headOf, resetToIn, syncFromRemoteIn } from '@/lib/repo'
 
 // no-checkout 仓库：init + 初始提交 + 清空工作目录
@@ -113,4 +113,39 @@ test('syncFromRemoteIn is a safe no-op against an empty remote', () => {
   const beforeHead = headOf(local)
   syncFromRemoteIn(local, emptyBare)
   expect(headOf(local)).toBe(beforeHead)
+})
+
+// 源仓：两个提交，供浅克隆测试验证只拉到 1 个
+function sourceRepoWithTwoCommits(): string {
+  const dir = noCheckoutRepo()               // 已含 1 个提交
+  commitViaWorkTree(dir, 'b.txt', 'second', 'second')
+  return dir
+}
+
+test('ensureRepo: 首次浅克隆并返回 true，已存在时返回 false', async () => {
+  const cwd = process.cwd()
+  const src = sourceRepoWithTwoCommits()
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shensure-'))
+  process.chdir(tmp)
+  try {
+    fs.mkdirSync(path.join(tmp, 'data'), { recursive: true })
+    // file:// 而非裸路径：本地路径 clone 会忽略 --depth
+    fs.writeFileSync(path.join(tmp, 'data', 'settings.json'),
+      JSON.stringify({ repoUrl: `file://${fs.realpathSync(src)}` }))
+    vi.resetModules()                        // DATA_DIR 在模块加载时定死，须重新 import
+    const { ensureRepo } = await import('@/lib/repo')
+
+    expect(ensureRepo()).toBe(true)          // 本次做了 clone → 调用方可省掉紧随的 fetch
+    const repoDir = path.join(tmp, 'data', 'marketplace')
+    expect(fs.existsSync(path.join(repoDir, '.git', 'shallow'))).toBe(true)
+    expect(execFileSync('git', ['log', '--oneline'], { cwd: repoDir }).toString().trim().split('\n'))
+      .toHaveLength(1)                       // --depth 1 生效，没拉第二个提交
+    expect(fs.readdirSync(repoDir)).toEqual(['.git']) // --no-checkout：工作目录空
+
+    expect(ensureRepo()).toBe(false)         // 已存在，不再 clone
+  } finally {
+    process.chdir(cwd)
+    fs.rmSync(tmp, { recursive: true, force: true })
+    fs.rmSync(src, { recursive: true, force: true })
+  }
 })
