@@ -1,7 +1,7 @@
 /** @author sgz @since 2026-08-03 */
 import fs from 'node:fs'
 import path from 'node:path'
-import { ProxyAgent, type Dispatcher } from 'undici'
+import { ProxyAgent, fetch as undiciFetch, type Dispatcher, type RequestInit } from 'undici'
 import { DATA_DIR } from './config'
 
 // git 与 fetch 都支持的代理协议；socks 仅 git 侧生效（undici ProxyAgent 不支持）
@@ -97,6 +97,15 @@ export function proxyArgsFor(targetUrl: string): string[] {
 
 // ProxyAgent 持有连接池，按代理地址缓存复用；地址变更时丢弃旧实例（不 close，交给 GC 与空闲超时）
 let agentCache: { url: string; agent: ProxyAgent } | null = null
+
+// 按代理设置发请求：自动挂 dispatcher，socks / 未配代理时直连。
+// 必须用 undici 自带的 fetch —— 全局 fetch 来自 Node 内置的旧版 undici，
+// 把本包 v8 的 ProxyAgent 传给它，handler API 对不上，会抛 UND_ERR_INVALID_ARG
+// 对外维持标准 fetch 的形状，undici 只活在这个函数里，两次断言就是两个 fetch 实现的类型边界
+export async function proxyFetch(url: string, init?: globalThis.RequestInit & { duplex?: 'half' }) {
+  const res = await undiciFetch(url, { ...init, dispatcher: proxyDispatcherFor(url) } as RequestInit)
+  return res as unknown as Response
+}
 
 // 供 fetch 的 dispatcher；socks 代理返回 undefined（undici 不支持，此时 /proxy 直连）
 export function proxyDispatcherFor(targetUrl: string): Dispatcher | undefined {

@@ -1,7 +1,7 @@
 /** @author sgz @since 2026-07-04 */
 import { NextRequest, NextResponse } from 'next/server'
 import { parseProxyPath, buildUpstreamUrl } from '@/lib/githubProxy'
-import { proxyDispatcherFor } from '@/lib/proxy'
+import { proxyFetch } from '@/lib/proxy'
 
 // 这些 header 由 fetch/Next 按响应体重新计算，原样转发会导致长度/编码不匹配
 const STRIP_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'host']
@@ -16,20 +16,18 @@ async function proxy(req: NextRequest, path: string[]) {
   headers.delete('git-protocol')
 
   const upstreamUrl = buildUpstreamUrl(target, req.nextUrl.search)
-  // duplex 与 dispatcher 都是 fetch 的 undici 扩展，标准 RequestInit 类型里没有，整体断言一次
-  const init = {
+  // 本机也在墙内时，转发给 GitHub 的这一跳同样要过正向代理，见 proxyFetch
+  const upstream = await proxyFetch(upstreamUrl, {
     method: req.method,
-    headers,
-    // 本机也在墙内时，转发给 GitHub 的这一跳同样要过正向代理（socks 代理下为 undefined，即直连）
-    dispatcher: proxyDispatcherFor(upstreamUrl),
+    // 传 entries 而非 Headers 实例：两侧 Headers 来自不同 undici 版本，实例校验对不上
+    headers: [...headers],
     // GET/HEAD 不能带请求体，否则 undici 会抛错
     body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body,
     redirect: 'follow',
     duplex: 'half',
-  } as RequestInit
-  const upstream = await fetch(upstreamUrl, init)
+  })
 
-  const resHeaders = new Headers(upstream.headers)
+  const resHeaders = new Headers([...upstream.headers])
   STRIP_HEADERS.forEach(h => resHeaders.delete(h))
   return new NextResponse(upstream.body, { status: upstream.status, headers: resHeaders })
 }
